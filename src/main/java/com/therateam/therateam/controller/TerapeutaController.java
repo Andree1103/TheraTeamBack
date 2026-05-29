@@ -1,5 +1,6 @@
 package com.therateam.therateam.controller;
 
+import com.therateam.therateam.dto.TerapeutaCompletoRequest;
 import com.therateam.therateam.model.Terapeuta;
 import com.therateam.therateam.service.TerapeutaService;
 import lombok.RequiredArgsConstructor;
@@ -33,9 +34,23 @@ public class TerapeutaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(terapeuta));
     }
 
+    /** Crea usuario + terapeuta en una sola transacción atómica */
+    @PostMapping("/completo")
+    public ResponseEntity<Terapeuta> createCompleto(@RequestBody TerapeutaCompletoRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.crearCompleto(req));
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<Terapeuta> update(@PathVariable Long id, @RequestBody Terapeuta terapeuta) {
         return service.update(id, terapeuta)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Actualiza terapeuta + datos del usuario vinculado en una sola transacción */
+    @PutMapping("/{id}/completo")
+    public ResponseEntity<Terapeuta> updateCompleto(@PathVariable Long id, @RequestBody TerapeutaCompletoRequest req) {
+        return service.actualizarCompleto(id, req)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

@@ -17,33 +17,30 @@ public class SesionController {
     private final SesionService service;
 
     @GetMapping
-    public List<Sesion> getAll() {
-        return service.findAll();
-    }
+    public List<Sesion> getAll() { return service.findAll(); }
 
     @GetMapping("/{id}")
     public ResponseEntity<Sesion> getById(@PathVariable Long id) {
-        return service.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        return service.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/tratamiento/{tratamientoId}")
+    public List<Sesion> getByTratamiento(@PathVariable Long tratamientoId) {
+        return service.findByTratamiento(tratamientoId);
     }
 
     @PostMapping
-    public ResponseEntity<Sesion> create(@RequestBody Sesion sesion) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.save(sesion));
+    public ResponseEntity<Sesion> create(@RequestBody Sesion s) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.save(s));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Sesion> update(@PathVariable Long id, @RequestBody Sesion sesion) {
-        return service.update(id, sesion)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Sesion> update(@PathVariable Long id, @RequestBody Sesion s) {
+        return service.update(id, s).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        return service.delete(id)
-                ? ResponseEntity.noContent().build()
-                : ResponseEntity.notFound().build();
+        return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 }

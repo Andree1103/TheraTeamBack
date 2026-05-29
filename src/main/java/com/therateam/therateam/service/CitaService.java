@@ -1,10 +1,7 @@
 package com.therateam.therateam.service;
 
 import com.therateam.therateam.dto.CitaDTO;
-import com.therateam.therateam.model.Cita;
-import com.therateam.therateam.model.Sesion;
-import com.therateam.therateam.model.Paciente;
-import com.therateam.therateam.model.Usuario;
+import com.therateam.therateam.model.*;
 import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.specification.CitaSpecification;
 import lombok.RequiredArgsConstructor;
@@ -33,21 +30,20 @@ public class CitaService {
         return repository.findById(id).map(this::toDTO);
     }
 
-    public Cita save(Cita cita) {
-        return repository.save(cita);
-    }
+    public Cita save(Cita cita) { return repository.save(cita); }
 
     public Optional<Cita> update(Long id, Cita data) {
-        return repository.findById(id).map(existing -> {
-            existing.setSesion(data.getSesion());
-            existing.setPaciente(data.getPaciente());
-            existing.setEstado(data.getEstado());
-            existing.setMotivoCancelacion(data.getMotivoCancelacion());
-            existing.setNotasPrevias(data.getNotasPrevias());
-            existing.setNotasPost(data.getNotasPost());
-            existing.setLinkVideollamada(data.getLinkVideollamada());
-            existing.setRecordatorioEnviado(data.getRecordatorioEnviado());
-            return repository.save(existing);
+        return repository.findById(id).map(e -> {
+            e.setTerapeuta(data.getTerapeuta());
+            e.setModalidad(data.getModalidad());
+            e.setFechaInicio(data.getFechaInicio());
+            e.setFechaFin(data.getFechaFin());
+            e.setDuracionMinutos(data.getDuracionMinutos());
+            e.setEstado(data.getEstado());
+            e.setLinkVideollamada(data.getLinkVideollamada());
+            e.setNotasPrevias(data.getNotasPrevias());
+            e.setRecordatorioEnviado(data.getRecordatorioEnviado());
+            return repository.save(e);
         });
     }
 
@@ -57,44 +53,61 @@ public class CitaService {
         return true;
     }
 
-    public CitaDTO toDTO(Cita cita) {
+    public CitaDTO toDTO(Cita c) {
         CitaDTO dto = new CitaDTO();
-        dto.setId(cita.getId());
-        dto.setEstado(cita.getEstado());
-        dto.setMotivoCancelacion(cita.getMotivoCancelacion());
-        dto.setNotasPrevias(cita.getNotasPrevias());
-        dto.setNotasPost(cita.getNotasPost());
-        dto.setLinkVideollamada(cita.getLinkVideollamada());
-        dto.setRecordatorioEnviado(cita.getRecordatorioEnviado());
+        dto.setId(c.getId());
+        dto.setFechaInicio(c.getFechaInicio());
+        dto.setFechaFin(c.getFechaFin());
+        dto.setDuracionMinutos(c.getDuracionMinutos());
+        dto.setLinkVideollamada(c.getLinkVideollamada());
+        dto.setNotasPrevias(c.getNotasPrevias());
+        dto.setRecordatorioEnviado(c.getRecordatorioEnviado());
 
-        Paciente p = cita.getPaciente();
-        if (p != null) {
-            dto.setPacienteId(p.getId());
-            dto.setPacienteNombre(p.getNombre());
-            dto.setPacienteApellido(p.getApellido());
-            dto.setPacienteDni(p.getDni());
-            dto.setPacienteTelefono(p.getTelefono());
-            dto.setPacienteCorreo(p.getCorreo());
+        // Estado
+        if (c.getEstado() != null) {
+            dto.setEstado(c.getEstado().getKey());
+            dto.setEstadoNombre(c.getEstado().getNombre());
+            dto.setEstadoColor(c.getEstado().getColorHex());
         }
 
-        Sesion s = cita.getSesion();
+        // Modalidad
+        if (c.getModalidad() != null) {
+            dto.setModalidad(c.getModalidad().getKey());
+        }
+
+        // Terapeuta (directo en cita)
+        if (c.getTerapeuta() != null && c.getTerapeuta().getUsuario() != null) {
+            Usuario u = c.getTerapeuta().getUsuario();
+            dto.setTerapeutaNombre(u.getNombre() + " " + u.getApellido());
+            dto.setTerapeutaId(c.getTerapeuta().getId());
+        }
+
+        // Sesion → Tratamiento → Paciente y TipoTerapia
+        Sesion s = c.getSesion();
         if (s != null) {
             dto.setSesionId(s.getId());
-            dto.setFechaInicio(s.getFechaInicio());
-            dto.setFechaFin(s.getFechaFin());
-            dto.setDuracionMinutos(s.getDuracionMinutos());
-            dto.setObservacion(s.getObservacion());
+            dto.setNumeroSesion(s.getNumero());
 
-            if (s.getTerapeuta() != null) {
-                Usuario u = s.getTerapeuta().getUsuario();
-                if (u != null) {
-                    dto.setTerapeutaNombre(u.getNombre() + " " + u.getApellido());
+            Tratamiento t = s.getTratamiento();
+            if (t != null) {
+                dto.setTotalSesiones(t.getTotalSesiones());
+                dto.setObservacion(t.getNotas());
+
+                Paciente p = t.getPaciente();
+                if (p != null) {
+                    dto.setPacienteId(p.getId());
+                    dto.setPacienteNombre(p.getNombre());
+                    dto.setPacienteApellido(p.getApellido());
+                    dto.setPacienteDni(p.getDni());
+                    dto.setPacienteTelefono(p.getTelefono());
+                    dto.setPacienteCorreo(p.getCorreo());
                 }
-            }
 
-            if (s.getTipoTerapia() != null) {
-                dto.setTipoTerapiaKey(s.getTipoTerapia().getKey());
-                dto.setTipoTerapiaNombre(s.getTipoTerapia().getNombre());
+                TipoTerapia tt = t.getTipoTerapia();
+                if (tt != null) {
+                    dto.setTipoTerapiaKey(tt.getKey());
+                    dto.setTipoTerapiaNombre(tt.getNombre());
+                }
             }
         }
 

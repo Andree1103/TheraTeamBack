@@ -18,25 +18,25 @@ public class CitaSpecification {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            Join<Object, Object> sesion     = root.join("sesion",    JoinType.LEFT);
-            Join<Object, Object> terapeutaJ = sesion.join("terapeuta", JoinType.LEFT);
-            Join<Object, Object> usuario    = terapeutaJ.join("usuario", JoinType.LEFT);
-
+            // Filtro por rango de fecha (fecha_inicio está directo en citas)
             if (fechaInicio != null) {
-                predicates.add(cb.greaterThanOrEqualTo(sesion.get("fechaInicio"), fechaInicio));
+                predicates.add(cb.greaterThanOrEqualTo(root.get("fechaInicio"), fechaInicio));
             }
             if (fechaFin != null) {
-                predicates.add(cb.lessThanOrEqualTo(sesion.get("fechaInicio"), fechaFin));
+                predicates.add(cb.lessThanOrEqualTo(root.get("fechaInicio"), fechaFin));
             }
+
+            // Filtro por nombre de terapeuta: citas.terapeuta → terapeutas.usuario → usuarios
             if (terapeuta != null && !terapeuta.isBlank()) {
+                Join<Object, Object> terapeutaJ = root.join("terapeuta", JoinType.LEFT);
+                Join<Object, Object> usuario    = terapeutaJ.join("usuario", JoinType.LEFT);
                 Expression<String> nombreCompleto = cb.lower(
                         cb.concat(cb.concat(usuario.get("nombre"), " "), usuario.get("apellido"))
                 );
                 predicates.add(cb.like(nombreCompleto, "%" + terapeuta.toLowerCase() + "%"));
             }
 
-            query.orderBy(cb.asc(sesion.get("fechaInicio")));
-
+            query.orderBy(cb.asc(root.get("fechaInicio")));
             return cb.and(predicates.toArray(new Predicate[0]));
         };
     }

@@ -14,28 +14,16 @@ public class SesionService {
 
     private final SesionRepository repository;
 
-    public List<Sesion> findAll() {
-        return repository.findAll();
-    }
-
-    public Optional<Sesion> findById(Long id) {
-        return repository.findById(id);
-    }
-
-    public Sesion save(Sesion sesion) {
-        return repository.save(sesion);
-    }
+    public List<Sesion> findAll() { return repository.findAll(); }
+    public Optional<Sesion> findById(Long id) { return repository.findById(id); }
+    public List<Sesion> findByTratamiento(Long tratamientoId) { return repository.findByTratamientoIdOrderByNumeroAsc(tratamientoId); }
+    public Sesion save(Sesion s) { return repository.save(s); }
 
     public Optional<Sesion> update(Long id, Sesion data) {
-        return repository.findById(id).map(existing -> {
-            existing.setTerapeuta(data.getTerapeuta());
-            existing.setTipoTerapia(data.getTipoTerapia());
-            existing.setFechaInicio(data.getFechaInicio());
-            existing.setFechaFin(data.getFechaFin());
-            existing.setDuracionMinutos(data.getDuracionMinutos());
-            existing.setModalidad(data.getModalidad());
-            existing.setObservacion(data.getObservacion());
-            return repository.save(existing);
+        return repository.findById(id).map(e -> {
+            e.setEstado(data.getEstado());
+            e.setCitaActiva(data.getCitaActiva());
+            return repository.save(e);
         });
     }
 

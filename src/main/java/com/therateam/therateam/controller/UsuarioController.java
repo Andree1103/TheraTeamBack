@@ -21,6 +21,11 @@ public class UsuarioController {
         return service.findAll();
     }
 
+    @GetMapping("/libres")
+    public List<Usuario> getLibres() {
+        return service.findLibres();
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Usuario> getById(@PathVariable Long id) {
         return service.findById(id)

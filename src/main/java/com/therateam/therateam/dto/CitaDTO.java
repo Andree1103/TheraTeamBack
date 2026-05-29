@@ -15,6 +15,12 @@ public class CitaDTO {
     @JsonProperty("sesion_id")
     private Long sesionId;
 
+    @JsonProperty("numero_sesion")
+    private Integer numeroSesion;
+
+    @JsonProperty("total_sesiones")
+    private Integer totalSesiones;
+
     @JsonProperty("paciente_id")
     private Long pacienteId;
 
@@ -32,6 +38,9 @@ public class CitaDTO {
 
     @JsonProperty("paciente_correo")
     private String pacienteCorreo;
+
+    @JsonProperty("terapeuta_id")
+    private Long terapeutaId;
 
     @JsonProperty("terapeuta_nombre")
     private String terapeutaNombre;
@@ -53,16 +62,17 @@ public class CitaDTO {
 
     private String estado;
 
-    private String observacion;
+    @JsonProperty("estado_nombre")
+    private String estadoNombre;
 
-    @JsonProperty("motivo_cancelacion")
-    private String motivoCancelacion;
+    @JsonProperty("estado_color")
+    private String estadoColor;
+
+    private String modalidad;
+    private String observacion;
 
     @JsonProperty("notas_previas")
     private String notasPrevias;
-
-    @JsonProperty("notas_post")
-    private String notasPost;
 
     @JsonProperty("link_videollamada")
     private String linkVideollamada;

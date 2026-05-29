@@ -18,6 +18,10 @@ public class UsuarioService {
         return repository.findAll();
     }
 
+    public List<Usuario> findLibres() {
+        return repository.findUsuariosLibres();
+    }
+
     public Optional<Usuario> findById(Long id) {
         return repository.findById(id);
     }
