@@ -45,6 +45,8 @@ public class Tratamiento {
     private Integer sesionesPendientes;
 
     private BigDecimal totalCobrado;
+
+    @Column(name = "saldo_a_favor")
     private BigDecimal saldoAFavor;
     private LocalDate fechaInicio;
     private String notas;

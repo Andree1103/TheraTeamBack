@@ -1,6 +1,8 @@
 package com.therateam.therateam.controller;
 
+import com.therateam.therateam.dto.CitaConPacienteRequest;
 import com.therateam.therateam.dto.CitaDTO;
+import com.therateam.therateam.dto.CitaRapidaRequest;
 import com.therateam.therateam.model.Cita;
 import com.therateam.therateam.service.CitaService;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +48,22 @@ public class CitaController {
     @PostMapping
     public ResponseEntity<Cita> create(@RequestBody Cita cita) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(cita));
+    }
+
+    /** Crea cita a partir de paciente_id — maneja tratamiento y sesión internamente */
+    @PostMapping("/rapida")
+    public ResponseEntity<CitaDTO> createRapida(@RequestBody CitaRapidaRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.crearRapida(req));
+    }
+
+    /**
+     * Crea cita(s) atómica con paciente embebido.
+     * Busca paciente por DNI — si no existe lo crea. Soporta paciente2 opcional (multipaciente).
+     * Resuelve terapeuta por nombre y tipoTerapia/estado por key.
+     */
+    @PostMapping("/con-paciente")
+    public ResponseEntity<List<CitaDTO>> createConPaciente(@RequestBody CitaConPacienteRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.crearConPaciente(req));
     }
 
     @PutMapping("/{id}")

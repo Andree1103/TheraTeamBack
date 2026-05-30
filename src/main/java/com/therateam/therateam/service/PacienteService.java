@@ -22,6 +22,10 @@ public class PacienteService {
         return repository.findById(id);
     }
 
+    public Optional<Paciente> findByDni(String dni) {
+        return repository.findByDni(dni);
+    }
+
     public Paciente save(Paciente paciente) {
         return repository.save(paciente);
     }

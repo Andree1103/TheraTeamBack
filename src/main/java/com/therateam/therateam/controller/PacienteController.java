@@ -21,6 +21,13 @@ public class PacienteController {
         return service.findAll();
     }
 
+    @GetMapping("/buscar")
+    public ResponseEntity<Paciente> buscarPorDni(@RequestParam String dni) {
+        return service.findByDni(dni)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Paciente> getById(@PathVariable Long id) {
         return service.findById(id)
