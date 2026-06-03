@@ -6,6 +6,9 @@ import com.therateam.therateam.dto.CitaRapidaRequest;
 import com.therateam.therateam.model.Cita;
 import com.therateam.therateam.service.CitaService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,21 +24,21 @@ public class CitaController {
 
     private final CitaService service;
 
-    // Listado completo sin filtros
+    /** GET /api/citas?page=0&size=20&sort=fechaInicio,desc */
     @GetMapping
-    public List<CitaDTO> getAll() {
-        return service.findAll();
+    public Page<CitaDTO> getAll(@PageableDefault(size = 20, sort = "fechaInicio") Pageable pageable) {
+        return service.findAllPaged(pageable);
     }
 
-    // Listado con filtros: rango de fechas y/o terapeuta
-    // GET /api/citas/filtro?fechaInicio=2026-05-18T00:00:00&fechaFin=2026-05-24T23:59:59&terapeuta=Ana
+    /** GET /api/citas/filtro?fechaInicio=...&fechaFin=...&terapeuta=Ana&page=0&size=50 */
     @GetMapping("/filtro")
-    public List<CitaDTO> getByFiltros(
+    public Page<CitaDTO> getByFiltros(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin,
-            @RequestParam(required = false) String terapeuta
+            @RequestParam(required = false) String terapeuta,
+            @PageableDefault(size = 50) Pageable pageable
     ) {
-        return service.findByFiltros(fechaInicio, fechaFin, terapeuta);
+        return service.findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, pageable);
     }
 
     @GetMapping("/{id}")

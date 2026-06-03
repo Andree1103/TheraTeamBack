@@ -1,5 +1,6 @@
 package com.therateam.therateam.model;
 
+import org.hibernate.annotations.BatchSize;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -30,6 +31,7 @@ public class Terapeuta {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    @BatchSize(size = 30)
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "terapeuta_especialidades",

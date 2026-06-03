@@ -6,4 +6,5 @@ import java.util.List;
 @Repository
 public interface AtencionMetricaRepository extends JpaRepository<AtencionMetrica, Long> {
     List<AtencionMetrica> findByAtencionId(Long atencionId);
+    void deleteByAtencionId(Long atencionId);
 }

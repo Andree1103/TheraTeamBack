@@ -1,5 +1,6 @@
 package com.therateam.therateam.controller;
 
+import com.therateam.therateam.dto.AtencionClinicaRequest;
 import com.therateam.therateam.model.AtencionClinica;
 import com.therateam.therateam.service.AtencionClinicaService;
 import lombok.RequiredArgsConstructor;
@@ -10,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/atenciones")
+@RequestMapping({"/api/atencion-clinica", "/api/atenciones"})
 @RequiredArgsConstructor
 public class AtencionClinicaController {
 
@@ -29,9 +30,13 @@ public class AtencionClinicaController {
         return service.findByCita(citaId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    /**
+     * Registra la atención de una cita:
+     * guarda atencion_clinica + métricas, actualiza sesion y tratamiento.
+     */
     @PostMapping
-    public ResponseEntity<AtencionClinica> create(@RequestBody AtencionClinica atencion) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.save(atencion));
+    public ResponseEntity<AtencionClinica> registrar(@RequestBody AtencionClinicaRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.registrar(req));
     }
 
     @PutMapping("/{id}")

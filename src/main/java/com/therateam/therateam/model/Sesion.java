@@ -1,5 +1,6 @@
 package com.therateam.therateam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -23,6 +24,7 @@ public class Sesion {
     private CatEstadoSesion estado;
 
     // FK diferida — apunta a la cita activa (puede ser null al crear)
+    @JsonIgnoreProperties({"sesion", "reprogramacionDe"})
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "cita_activa_id")
     private Cita citaActiva;

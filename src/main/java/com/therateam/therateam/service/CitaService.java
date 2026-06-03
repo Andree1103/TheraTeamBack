@@ -8,6 +8,8 @@ import com.therateam.therateam.model.*;
 import com.therateam.therateam.repository.*;
 import com.therateam.therateam.specification.CitaSpecification;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,16 @@ public class CitaService {
 
     public List<CitaDTO> findAll() {
         return citaRepository.findAll().stream().map(this::toDTO).toList();
+    }
+
+    public Page<CitaDTO> findAllPaged(Pageable pageable) {
+        return citaRepository.findAll(pageable).map(this::toDTO);
+    }
+
+    public Page<CitaDTO> findByFiltrosPaged(LocalDateTime fechaInicio, LocalDateTime fechaFin,
+                                             String terapeuta, Pageable pageable) {
+        return citaRepository.findAll(CitaSpecification.byFiltros(fechaInicio, fechaFin, terapeuta), pageable)
+                .map(this::toDTO);
     }
 
     public List<CitaDTO> findByFiltros(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta) {
@@ -179,7 +191,13 @@ public class CitaService {
         Terapeuta terapeuta = null;
         if (req.getTerapeutaNombre() != null && !req.getTerapeutaNombre().isBlank()) {
             List<Terapeuta> matches = terapeutaRepository.findByNombreCompleto(req.getTerapeutaNombre());
-            if (!matches.isEmpty()) terapeuta = matches.get(0);
+            if (!matches.isEmpty()) {
+                terapeuta = matches.get(0);
+            } else {
+                throw new IllegalArgumentException("Terapeuta no encontrado: '" + req.getTerapeutaNombre() + "'");
+            }
+        } else {
+            throw new IllegalArgumentException("Se requiere terapeutaNombre");
         }
 
         // Resolver tipo de terapia por key

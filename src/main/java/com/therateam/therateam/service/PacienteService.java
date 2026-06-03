@@ -3,7 +3,10 @@ package com.therateam.therateam.service;
 import com.therateam.therateam.model.Paciente;
 import com.therateam.therateam.repository.PacienteRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -16,6 +19,11 @@ public class PacienteService {
 
     public List<Paciente> findAll() {
         return repository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Paciente> findAllPaged(Pageable pageable) {
+        return repository.findAll(pageable);
     }
 
     public Optional<Paciente> findById(Long id) {

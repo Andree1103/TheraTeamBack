@@ -1,5 +1,6 @@
 package com.therateam.therateam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -12,6 +13,7 @@ public class Cita {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @JsonIgnoreProperties({"citaActiva", "tratamiento"})
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "sesion_id")
     private Sesion sesion;
