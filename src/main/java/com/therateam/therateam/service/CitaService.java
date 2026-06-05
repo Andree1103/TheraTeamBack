@@ -33,6 +33,9 @@ public class CitaService {
     private final CatEstadoSesionRepository catEstadoSesionRepository;
     private final CatEstadoCitaRepository catEstadoCitaRepository;
     private final CatModalidadRepository catModalidadRepository;
+    private final CatEstadoPagoCitaRepository catEstadoPagoCitaRepository;
+    private final PagoRepository pagoRepository;
+    private final CatMetodoPagoRepository catMetodoPagoRepository;
 
     public List<CitaDTO> findAll() {
         return citaRepository.findAll().stream().map(this::toDTO).toList();
@@ -80,9 +83,18 @@ public class CitaService {
         return true;
     }
 
+    /** Actualiza solo el estado_pago de una cita por key (SIN_PAGO, PARCIAL, PAGADA) */
+    public Optional<CitaDTO> actualizarEstadoPago(Long id, String key) {
+        return citaRepository.findById(id).map(cita -> {
+            CatEstadoPagoCita estadoPago = catEstadoPagoCitaRepository.findByKey(key).orElse(null);
+            cita.setEstadoPago(estadoPago);
+            return toDTO(citaRepository.save(cita));
+        });
+    }
+
     /**
      * Crea cita a partir de paciente_id sin necesidad de pre-crear tratamiento/sesion.
-     * Flujo: busca o crea tratamiento → crea sesion → crea cita → retorna CitaDTO.
+     * Flujo: busca o crea tratamiento → crea sesion → crea cita → (opcional) crea pago.
      */
     @Transactional
     public CitaDTO crearRapida(CitaRapidaRequest req) {
@@ -92,7 +104,6 @@ public class CitaService {
         Terapeuta terapeuta = terapeutaRepository.findById(req.getTerapeutaId())
                 .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado: " + req.getTerapeutaId()));
 
-        // Tratamiento: usar el indicado, o buscar uno activo, o crear uno nuevo
         Tratamiento tratamiento;
         if (req.getTratamientoId() != null) {
             tratamiento = tratamientoRepository.findById(req.getTratamientoId())
@@ -115,10 +126,8 @@ public class CitaService {
                     .orElseGet(() -> crearTratamiento(paciente, terapeuta, finalTipoTerapia, req));
         }
 
-        // Siguiente número de sesión
         int siguienteNumero = sesionRepository.findByTratamientoId(tratamiento.getId()).size() + 1;
 
-        // Estado de sesión: PENDIENTE por defecto
         CatEstadoSesion estadoSesion = catEstadoSesionRepository.findByKey("PENDIENTE")
                 .orElseGet(() -> catEstadoSesionRepository.findAll().stream().findFirst().orElse(null));
 
@@ -128,7 +137,6 @@ public class CitaService {
         sesion.setEstado(estadoSesion);
         sesion = sesionRepository.save(sesion);
 
-        // Estado y modalidad de la cita
         CatEstadoCita estadoCita = null;
         if (req.getEstadoCitaId() != null) {
             estadoCita = catEstadoCitaRepository.findById(req.getEstadoCitaId()).orElse(null);
@@ -143,11 +151,15 @@ public class CitaService {
             modalidad = catModalidadRepository.findById(req.getModalidadId()).orElse(null);
         }
 
+        // Estado de pago inicial: SIN_PAGO (se actualiza si crearPago=true y pagadoInmediato=true)
+        CatEstadoPagoCita estadoPagoSinPago = catEstadoPagoCitaRepository.findByKey("SIN_PAGO").orElse(null);
+
         Cita cita = new Cita();
         cita.setSesion(sesion);
         cita.setTerapeuta(terapeuta);
         cita.setModalidad(modalidad);
         cita.setEstado(estadoCita);
+        cita.setEstadoPago(estadoPagoSinPago);
         cita.setFechaInicio(req.getFechaInicio());
         cita.setFechaFin(req.getFechaFin());
         cita.setDuracionMinutos(req.getDuracionMinutos());
@@ -155,16 +167,56 @@ public class CitaService {
         cita.setLinkVideollamada(req.getLinkVideollamada());
         cita = citaRepository.save(cita);
 
-        // Actualizar sesion.citaActiva apuntando a la cita recién creada
         sesion.setCitaActiva(cita);
         sesionRepository.save(sesion);
+
+        // Crear pago si se solicitó
+        if (req.isCrearPago()) {
+            cita = crearPagoParaCita(cita, tratamiento, paciente, req);
+        }
 
         return toDTO(cita);
     }
 
     /**
-     * Busca paciente por DNI — si no existe lo crea. Transaccional junto con el caller.
+     * Crea el pago vinculado a la cita y actualiza su estado_pago.
      */
+    private Cita crearPagoParaCita(Cita cita, Tratamiento tratamiento, Paciente paciente,
+                                    CitaRapidaRequest req) {
+        BigDecimal monto = req.getPrecioCita() != null
+                ? req.getPrecioCita()
+                : (tratamiento.getPrecioPorSesion() != null ? tratamiento.getPrecioPorSesion() : BigDecimal.ZERO);
+
+        CatMetodoPago metodo = null;
+        if (req.getMetodoPagoId() != null) {
+            metodo = catMetodoPagoRepository.findById(req.getMetodoPagoId()).orElse(null);
+        }
+
+        Pago pago = new Pago();
+        pago.setTratamiento(tratamiento);
+        pago.setPaciente(paciente);
+        pago.setCita(cita);
+        pago.setMetodo(metodo);
+        pago.setMontoRecibido(monto);
+        pago.setMontoAplicado(monto);
+        pago.setSaldoGenerado(BigDecimal.ZERO);
+        pago.setSaldoPrevio(BigDecimal.ZERO);
+        pagoRepository.save(pago);
+
+        // Actualizar tratamiento.totalCobrado
+        BigDecimal totalCobradoNuevo = (tratamiento.getTotalCobrado() != null
+                ? tratamiento.getTotalCobrado()
+                : BigDecimal.ZERO).add(monto);
+        tratamiento.setTotalCobrado(totalCobradoNuevo);
+        tratamientoRepository.save(tratamiento);
+
+        // Actualizar estado_pago de la cita
+        String keyEstadoPago = req.isPagadoInmediato() ? "PAGADA" : "SIN_PAGO";
+        CatEstadoPagoCita estadoPago = catEstadoPagoCitaRepository.findByKey(keyEstadoPago).orElse(null);
+        cita.setEstadoPago(estadoPago);
+        return citaRepository.save(cita);
+    }
+
     private Paciente buscarOCrearPaciente(PacienteInput input) {
         if (input == null) return null;
         if (input.getDni() != null && !input.getDni().isBlank()) {
@@ -180,14 +232,8 @@ public class CitaService {
         return pacienteRepository.save(nuevo);
     }
 
-    /**
-     * Crea una cita atómica: busca o crea paciente(s), resuelve terapeuta/tipoTerapia por
-     * nombre/key, genera tratamiento + sesion + cita en una sola transacción.
-     * Retorna lista porque soporta sesiones multipaciente (paciente2 opcional).
-     */
     @Transactional
     public List<CitaDTO> crearConPaciente(CitaConPacienteRequest req) {
-        // Resolver terapeuta por nombre
         Terapeuta terapeuta = null;
         if (req.getTerapeutaNombre() != null && !req.getTerapeutaNombre().isBlank()) {
             List<Terapeuta> matches = terapeutaRepository.findByNombreCompleto(req.getTerapeutaNombre());
@@ -200,13 +246,11 @@ public class CitaService {
             throw new IllegalArgumentException("Se requiere terapeutaNombre");
         }
 
-        // Resolver tipo de terapia por key
         TipoTerapia tipoTerapia = null;
         if (req.getTipoKey() != null) {
             tipoTerapia = tipoTerapiaRepository.findByKey(req.getTipoKey()).orElse(null);
         }
 
-        // Resolver estado de cita por key
         CatEstadoCita estadoCita = null;
         if (req.getEstadoKey() != null) {
             estadoCita = catEstadoCitaRepository.findByKey(req.getEstadoKey()).orElse(null);
@@ -216,7 +260,6 @@ public class CitaService {
                     .orElseGet(() -> catEstadoCitaRepository.findAll().stream().findFirst().orElse(null));
         }
 
-        // Resolver modalidad por key — fallback a PRESENCIAL o la primera disponible
         CatModalidad modalidad = null;
         if (req.getModalidadKey() != null) {
             modalidad = catModalidadRepository.findByKey(req.getModalidadKey()).orElse(null);
@@ -226,24 +269,24 @@ public class CitaService {
                     .orElseGet(() -> catModalidadRepository.findAll().stream().findFirst().orElse(null));
         }
 
-        // fechaFin = fechaInicio + duracionMinutos
         LocalDateTime fechaFin = (req.getFechaInicio() != null && req.getDuracionMinutos() != null)
                 ? req.getFechaInicio().plusMinutes(req.getDuracionMinutos())
                 : null;
 
-        // Crear cita por cada paciente
         List<CitaDTO> resultado = new java.util.ArrayList<>();
 
         Paciente p1 = buscarOCrearPaciente(req.getPaciente());
         if (p1 != null) {
             resultado.add(crearCitaParaPaciente(p1, terapeuta, tipoTerapia, estadoCita, modalidad,
-                    req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion()));
+                    req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
+                    req.getTotalSesionesPlan(), req.getPrecioPorSesion()));
         }
 
         if (req.getPaciente2() != null) {
             Paciente p2 = buscarOCrearPaciente(req.getPaciente2());
             resultado.add(crearCitaParaPaciente(p2, terapeuta, tipoTerapia, estadoCita, modalidad,
-                    req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion()));
+                    req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
+                    req.getTotalSesionesPlan(), req.getPrecioPorSesion()));
         }
 
         return resultado;
@@ -253,8 +296,8 @@ public class CitaService {
                                            TipoTerapia tipoTerapia, CatEstadoCita estadoCita,
                                            CatModalidad modalidad, LocalDateTime fechaInicio,
                                            LocalDateTime fechaFin, Integer duracionMinutos,
-                                           String observacion) {
-        // Buscar tratamiento activo o crear uno nuevo
+                                           String observacion,
+                                           Integer totalSesionesPlan, BigDecimal precioPorSesion) {
         List<Tratamiento> existentes = (terapeuta != null && tipoTerapia != null)
                 ? tratamientoRepository.findByPacienteIdAndTerapeutaIdAndTipoTerapiaId(
                         paciente.getId(), terapeuta.getId(), tipoTerapia.getId())
@@ -262,6 +305,8 @@ public class CitaService {
 
         Terapeuta finalTerapeuta = terapeuta;
         TipoTerapia finalTipoTerapia = tipoTerapia;
+        int nSesiones = totalSesionesPlan != null && totalSesionesPlan > 0 ? totalSesionesPlan : 1;
+        BigDecimal precio = precioPorSesion != null ? precioPorSesion : BigDecimal.ZERO;
 
         Tratamiento tratamiento = existentes.stream()
                 .filter(t -> t.getEstado() != null && "ACTIVO".equals(t.getEstado().getKey()))
@@ -269,12 +314,11 @@ public class CitaService {
                 .orElseGet(() -> {
                     CitaRapidaRequest dummy = new CitaRapidaRequest();
                     dummy.setNombreTratamiento(finalTipoTerapia != null ? finalTipoTerapia.getNombre() : "Tratamiento");
-                    dummy.setTotalSesiones(1);
-                    dummy.setPrecioPorSesion(BigDecimal.ZERO);
+                    dummy.setTotalSesiones(nSesiones);
+                    dummy.setPrecioPorSesion(precio);
                     return crearTratamiento(paciente, finalTerapeuta, finalTipoTerapia, dummy);
                 });
 
-        // Siguiente sesión
         int siguienteNumero = sesionRepository.findByTratamientoId(tratamiento.getId()).size() + 1;
 
         CatEstadoSesion estadoSesion = catEstadoSesionRepository.findByKey("PENDIENTE")
@@ -286,11 +330,14 @@ public class CitaService {
         sesion.setEstado(estadoSesion);
         sesion = sesionRepository.save(sesion);
 
+        CatEstadoPagoCita estadoPagoSinPago = catEstadoPagoCitaRepository.findByKey("SIN_PAGO").orElse(null);
+
         Cita cita = new Cita();
         cita.setSesion(sesion);
         cita.setTerapeuta(terapeuta);
         cita.setModalidad(modalidad);
         cita.setEstado(estadoCita);
+        cita.setEstadoPago(estadoPagoSinPago);
         cita.setFechaInicio(fechaInicio);
         cita.setFechaFin(fechaFin);
         cita.setDuracionMinutos(duracionMinutos);
@@ -335,6 +382,12 @@ public class CitaService {
             dto.setEstado(c.getEstado().getKey());
             dto.setEstadoNombre(c.getEstado().getNombre());
             dto.setEstadoColor(c.getEstado().getColorHex());
+        }
+
+        if (c.getEstadoPago() != null) {
+            dto.setEstadoPagoKey(c.getEstadoPago().getKey());
+            dto.setEstadoPagoNombre(c.getEstadoPago().getNombre());
+            dto.setEstadoPagoColor(c.getEstadoPago().getColor());
         }
 
         if (c.getModalidad() != null) {

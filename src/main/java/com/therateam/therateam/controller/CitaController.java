@@ -76,6 +76,15 @@ public class CitaController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /** PATCH /api/citas/{id}/estado-pago?key=PAGADA — actualiza solo el estado de pago */
+    @PatchMapping("/{id}/estado-pago")
+    public ResponseEntity<CitaDTO> patchEstadoPago(@PathVariable Long id,
+                                                    @RequestParam String key) {
+        return service.actualizarEstadoPago(id, key)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         return service.delete(id)

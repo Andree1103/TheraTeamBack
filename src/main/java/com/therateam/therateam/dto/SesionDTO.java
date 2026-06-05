@@ -31,6 +31,9 @@ public class SesionDTO {
         private Integer duracionMinutos;
         private EstadoInfo estado;
         private ModalidadInfo modalidad;
+        private String estadoPagoKey;
+        private String estadoPagoNombre;
+        private String estadoPagoColor;
     }
 
     @Data

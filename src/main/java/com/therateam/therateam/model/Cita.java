@@ -34,6 +34,10 @@ public class Cita {
     @JoinColumn(name = "estado_id")
     private CatEstadoCita estado;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "estado_pago_id")
+    private CatEstadoPagoCita estadoPago;
+
     private String linkVideollamada;
     private String notasPrevias;
     private Boolean recordatorioEnviado;

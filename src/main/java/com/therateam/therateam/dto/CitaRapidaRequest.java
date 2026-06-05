@@ -31,4 +31,10 @@ public class CitaRapidaRequest {
     private Integer duracionMinutos;
     private String notasPrevias;
     private String linkVideollamada;
+
+    // Campos de pago (opcionales — si crearPago=true se genera el pago en la misma transacción)
+    private boolean crearPago = false;
+    private BigDecimal precioCita;     // override del precio por sesión para este pago
+    private Long metodoPagoId;
+    private boolean pagadoInmediato = false;  // false=PENDIENTE, true=PAGADA
 }

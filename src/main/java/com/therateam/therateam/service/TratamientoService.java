@@ -155,6 +155,12 @@ public class TratamientoService {
                 ca.setModalidad(m);
             }
 
+            if (cita.getEstadoPago() != null) {
+                ca.setEstadoPagoKey(cita.getEstadoPago().getKey());
+                ca.setEstadoPagoNombre(cita.getEstadoPago().getNombre());
+                ca.setEstadoPagoColor(cita.getEstadoPago().getColor());
+            }
+
             dto.setCitaActiva(ca);
         }
 

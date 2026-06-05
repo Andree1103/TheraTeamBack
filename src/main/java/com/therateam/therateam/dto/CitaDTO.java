@@ -79,4 +79,13 @@ public class CitaDTO {
 
     @JsonProperty("recordatorio_enviado")
     private Boolean recordatorioEnviado;
+
+    @JsonProperty("estado_pago_key")
+    private String estadoPagoKey;
+
+    @JsonProperty("estado_pago_nombre")
+    private String estadoPagoNombre;
+
+    @JsonProperty("estado_pago_color")
+    private String estadoPagoColor;
 }

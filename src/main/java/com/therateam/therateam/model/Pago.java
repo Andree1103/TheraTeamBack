@@ -25,6 +25,10 @@ public class Pago {
     @JoinColumn(name = "metodo_id")
     private CatMetodoPago metodo;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "cita_id")
+    private Cita cita;
+
     private BigDecimal montoRecibido;
     private BigDecimal montoAplicado;
     private BigDecimal saldoGenerado;
