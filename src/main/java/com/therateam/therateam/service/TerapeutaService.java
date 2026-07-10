@@ -24,6 +24,7 @@ public class TerapeutaService {
     private final UsuarioRepository usuarioRepository;
     private final CatRolRepository catRolRepository;
     private final CatTipoTerapeutaRepository catTipoTerapeutaRepository;
+    private final CatAreaRepository catAreaRepository;
     private final CatEspecialidadRepository catEspecialidadRepository;
     private final SedeRepository sedeRepository;
     private final PasswordEncoder passwordEncoder;
@@ -49,6 +50,7 @@ public class TerapeutaService {
         return repository.findById(id).map(existing -> {
             existing.setUsuario(data.getUsuario());
             existing.setTipoTerapeuta(data.getTipoTerapeuta());
+            existing.setArea(data.getArea());
             existing.setCmp(data.getCmp());
             existing.setTelefono(data.getTelefono());
             existing.setFotoUrl(data.getFotoUrl());
@@ -101,6 +103,10 @@ public class TerapeutaService {
                     .ifPresent(terapeuta::setTipoTerapeuta);
         }
 
+        if (req.getAreaId() != null) {
+            catAreaRepository.findById(req.getAreaId()).ifPresent(terapeuta::setArea);
+        }
+
         if (req.getEspecialidadIds() != null && !req.getEspecialidadIds().isEmpty()) {
             List<CatEspecialidad> especialidades = catEspecialidadRepository.findAllById(req.getEspecialidadIds());
             terapeuta.setEspecialidades(especialidades);
@@ -136,6 +142,9 @@ public class TerapeutaService {
             if (req.getTipoTerapeutaId() != null) {
                 catTipoTerapeutaRepository.findById(req.getTipoTerapeutaId())
                         .ifPresent(existing::setTipoTerapeuta);
+            }
+            if (req.getAreaId() != null) {
+                catAreaRepository.findById(req.getAreaId()).ifPresent(existing::setArea);
             }
             if (req.getCmp() != null) existing.setCmp(req.getCmp());
             if (req.getTelefono() != null) existing.setTelefono(req.getTelefono());
@@ -179,6 +188,14 @@ public class TerapeutaService {
             ti.setKey(t.getTipoTerapeuta().getKey());
             ti.setNombre(t.getTipoTerapeuta().getNombre());
             dto.setTipoTerapeuta(ti);
+        }
+
+        if (t.getArea() != null) {
+            TerapeutaDTO.AreaInfo ai = new TerapeutaDTO.AreaInfo();
+            ai.setId(t.getArea().getId());
+            ai.setKey(t.getArea().getKey());
+            ai.setNombre(t.getArea().getNombre());
+            dto.setArea(ai);
         }
 
         if (t.getEspecialidades() != null) {

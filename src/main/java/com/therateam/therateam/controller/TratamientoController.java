@@ -28,8 +28,11 @@ public class TratamientoController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Tratamiento> getById(@PathVariable Long id) {
-        return service.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<TratamientoDTO> getById(@PathVariable Long id) {
+        return service.findById(id)
+                .map(service::toDTO)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{id}/sesiones")

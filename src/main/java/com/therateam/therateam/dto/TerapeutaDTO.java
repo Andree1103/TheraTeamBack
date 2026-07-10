@@ -20,11 +20,20 @@ public class TerapeutaDTO {
     private Boolean activo;
 
     private TipoInfo tipoTerapeuta;
+    private AreaInfo area;
     private List<EspecialidadInfo> especialidades;
 
     @Data
     @NoArgsConstructor
     public static class TipoInfo {
+        private Long id;
+        private String key;
+        private String nombre;
+    }
+
+    @Data
+    @NoArgsConstructor
+    public static class AreaInfo {
         private Long id;
         private String key;
         private String nombre;

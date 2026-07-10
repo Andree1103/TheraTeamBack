@@ -36,6 +36,7 @@ public class CitaService {
     private final CatEstadoPagoCitaRepository catEstadoPagoCitaRepository;
     private final PagoRepository pagoRepository;
     private final CatMetodoPagoRepository catMetodoPagoRepository;
+    private final DisponibilidadService disponibilidadService;
 
     public List<CitaDTO> findAll() {
         return citaRepository.findAll().stream().map(this::toDTO).toList();
@@ -73,6 +74,12 @@ public class CitaService {
             e.setLinkVideollamada(data.getLinkVideollamada());
             e.setNotasPrevias(data.getNotasPrevias());
             e.setRecordatorioEnviado(data.getRecordatorioEnviado());
+
+            Integer maxPacientes = (e.getSesion() != null && e.getSesion().getTratamiento() != null
+                    && e.getSesion().getTratamiento().getTipoTerapia() != null)
+                    ? e.getSesion().getTratamiento().getTipoTerapia().getMaxPacientes() : null;
+            validarDisponibilidad(e.getTerapeuta(), e.getFechaInicio(), e.getFechaFin(), maxPacientes, id);
+
             return citaRepository.save(e);
         });
     }
@@ -125,6 +132,9 @@ public class CitaService {
                     .findFirst()
                     .orElseGet(() -> crearTratamiento(paciente, terapeuta, finalTipoTerapia, req));
         }
+
+        validarDisponibilidad(terapeuta, req.getFechaInicio(), req.getFechaFin(),
+                tratamiento.getTipoTerapia() != null ? tratamiento.getTipoTerapia().getMaxPacientes() : null, null);
 
         int siguienteNumero = sesionRepository.findByTratamientoId(tratamiento.getId()).size() + 1;
 
@@ -298,6 +308,9 @@ public class CitaService {
                                            LocalDateTime fechaFin, Integer duracionMinutos,
                                            String observacion,
                                            Integer totalSesionesPlan, BigDecimal precioPorSesion) {
+        validarDisponibilidad(terapeuta, fechaInicio, fechaFin,
+                tipoTerapia != null ? tipoTerapia.getMaxPacientes() : null, null);
+
         List<Tratamiento> existentes = (terapeuta != null && tipoTerapia != null)
                 ? tratamientoRepository.findByPacienteIdAndTerapeutaIdAndTipoTerapiaId(
                         paciente.getId(), terapeuta.getId(), tipoTerapia.getId())
@@ -366,6 +379,31 @@ public class CitaService {
         t.setTotalSesiones(req.getTotalSesiones() != null ? req.getTotalSesiones() : 1);
         t.setPrecioPorSesion(req.getPrecioPorSesion() != null ? req.getPrecioPorSesion() : BigDecimal.ZERO);
         return tratamientoRepository.save(t);
+    }
+
+    /**
+     * Valida que [inicio, fin) esté dentro del horario del terapeuta (y no bloqueado por
+     * una excepción) y que no supere el cupo simultáneo (maxPacientes) del tipo de terapia.
+     * Lanza IllegalArgumentException (→ 400) si no cumple.
+     */
+    private void validarDisponibilidad(Terapeuta terapeuta, LocalDateTime inicio, LocalDateTime fin,
+                                        Integer maxPacientes, Long excluirCitaId) {
+        if (terapeuta == null || terapeuta.getId() == null || inicio == null || fin == null) return;
+
+        if (!disponibilidadService.estaDentroDeHorario(terapeuta.getId(), inicio, fin)) {
+            throw new IllegalArgumentException(
+                    "El terapeuta no atiende en ese horario (fuera de su horario habitual o bloqueado por una excepción).");
+        }
+
+        int capacidad = (maxPacientes != null && maxPacientes > 0) ? maxPacientes : 1;
+        List<Cita> solapadas = excluirCitaId != null
+                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+                        terapeuta.getId(), fin, inicio, "CANCELADA", excluirCitaId)
+                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+                        terapeuta.getId(), fin, inicio, "CANCELADA");
+        if (solapadas.size() >= capacidad) {
+            throw new IllegalArgumentException("El terapeuta ya tiene el cupo completo en ese horario.");
+        }
     }
 
     public CitaDTO toDTO(Cita c) {

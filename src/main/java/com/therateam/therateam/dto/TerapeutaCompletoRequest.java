@@ -24,6 +24,7 @@ public class TerapeutaCompletoRequest {
 
     // Siempre (campos del terapeuta)
     private Long tipoTerapeutaId;
+    private Long areaId;
     private String cmp;
     private String telefono;
     private String fotoUrl;

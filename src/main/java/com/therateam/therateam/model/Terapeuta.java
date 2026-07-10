@@ -23,6 +23,10 @@ public class Terapeuta {
     @JoinColumn(name = "tipo_terapeuta_id")
     private CatTipoTerapeuta tipoTerapeuta;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "area_id")
+    private CatArea area;
+
     private String cmp;
     private String telefono;
     private String fotoUrl;
