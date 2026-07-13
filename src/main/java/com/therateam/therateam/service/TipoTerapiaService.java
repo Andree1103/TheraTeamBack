@@ -33,6 +33,10 @@ public class TipoTerapiaService {
             existing.setDuracionMinutos(data.getDuracionMinutos());
             existing.setMaxPacientes(data.getMaxPacientes());
             existing.setActivo(data.getActivo());
+            existing.setArea(data.getArea());
+            existing.setEspecialidad(data.getEspecialidad());
+            existing.setSesionesSugeridas(data.getSesionesSugeridas());
+            existing.setComentario(data.getComentario());
             return repository.save(existing);
         });
     }

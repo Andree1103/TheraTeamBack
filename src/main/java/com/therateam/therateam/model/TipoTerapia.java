@@ -22,4 +22,18 @@ public class TipoTerapia {
     private Integer duracionMinutos;
     private Integer maxPacientes;
     private Boolean activo;
+
+    @ManyToOne
+    @JoinColumn(name = "area_id")
+    private CatArea area;
+
+    /** Especialidad dentro del área (ej. Psicología, Ocupacional, Traumatología). */
+    private String especialidad;
+
+    /** Sesiones sugeridas para completar esta terapia/evaluación (ej. 6 sesiones para Descarte de TDAH). */
+    private Integer sesionesSugeridas;
+
+    /** Notas/reglas adicionales (ej. "Niños menores de 18 meses pasan por una evaluación previa"). */
+    @Column(columnDefinition = "TEXT")
+    private String comentario;
 }
