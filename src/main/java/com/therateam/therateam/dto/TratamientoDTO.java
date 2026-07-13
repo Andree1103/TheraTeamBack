@@ -44,4 +44,40 @@ public class TratamientoDTO {
 
     private LocalDate fechaInicio;
     private String notas;
+
+    /** Constructor usado por la proyección JPQL (SELECT new ...) — el orden debe calzar con la query. */
+    public TratamientoDTO(Long id, String nombre,
+                           Long pacienteId, String pacienteNombre, String pacienteApellido,
+                           String pacienteDni, String pacienteTelefono,
+                           Long terapeutaId, String terapeutaNombre,
+                           String tipoTerapiaKey, String tipoTerapiaNombre,
+                           String estadoKey, String estadoNombre, String estadoColor,
+                           Integer totalSesiones, Integer sesionesAtendidas, Integer sesionesPendientes,
+                           BigDecimal montoTotal, BigDecimal precioPorSesion,
+                           BigDecimal totalCobrado, BigDecimal saldoAFavor,
+                           LocalDate fechaInicio, String notas) {
+        this.id = id;
+        this.nombre = nombre;
+        this.pacienteId = pacienteId;
+        this.pacienteNombre = pacienteNombre;
+        this.pacienteApellido = pacienteApellido;
+        this.pacienteDni = pacienteDni;
+        this.pacienteTelefono = pacienteTelefono;
+        this.terapeutaId = terapeutaId;
+        this.terapeutaNombre = terapeutaNombre;
+        this.tipoTerapiaKey = tipoTerapiaKey;
+        this.tipoTerapiaNombre = tipoTerapiaNombre;
+        this.estadoKey = estadoKey;
+        this.estadoNombre = estadoNombre;
+        this.estadoColor = estadoColor;
+        this.totalSesiones = totalSesiones;
+        this.sesionesAtendidas = sesionesAtendidas;
+        this.sesionesPendientes = sesionesPendientes;
+        this.montoTotal = montoTotal;
+        this.precioPorSesion = precioPorSesion;
+        this.totalCobrado = totalCobrado;
+        this.saldoAFavor = saldoAFavor;
+        this.fechaInicio = fechaInicio;
+        this.notas = notas;
+    }
 }

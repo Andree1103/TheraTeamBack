@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -31,7 +32,27 @@ public class TerapeutaService {
 
     @Transactional(readOnly = true)
     public Page<TerapeutaDTO> findAllPaged(Pageable pageable) {
-        return repository.findAll(pageable).map(this::toDTO);
+        Page<TerapeutaDTO> page = repository.findAllProjected(pageable);
+
+        page.getContent().forEach(dto -> {
+            if (dto.getTipoTerapeuta() != null && dto.getTipoTerapeuta().getId() == null) dto.setTipoTerapeuta(null);
+            if (dto.getArea() != null && dto.getArea().getId() == null) dto.setArea(null);
+        });
+
+        List<Long> ids = page.getContent().stream().map(TerapeutaDTO::getId).toList();
+        if (!ids.isEmpty()) {
+            Map<Long, List<TerapeutaDTO.EspecialidadInfo>> especialidadesPorTerapeuta =
+                    repository.findEspecialidadesByTerapeutaIds(ids).stream()
+                            .collect(Collectors.groupingBy(
+                                    row -> (Long) row[0],
+                                    Collectors.mapping(
+                                            row -> new TerapeutaDTO.EspecialidadInfo((Long) row[1], (String) row[2], (String) row[3]),
+                                            Collectors.toList())));
+            page.getContent().forEach(dto ->
+                    dto.setEspecialidades(especialidadesPorTerapeuta.getOrDefault(dto.getId(), List.of())));
+        }
+
+        return page;
     }
 
     public List<Terapeuta> findAll() {

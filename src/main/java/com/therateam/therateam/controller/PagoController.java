@@ -1,5 +1,6 @@
 package com.therateam.therateam.controller;
 
+import com.therateam.therateam.dto.PagoDTO;
 import com.therateam.therateam.model.Pago;
 import com.therateam.therateam.service.PagoService;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ public class PagoController {
     private final PagoService service;
 
     @GetMapping
-    public List<Pago> getAll() { return service.findAll(); }
+    public List<PagoDTO> getAll() { return service.findAll(); }
 
     @GetMapping("/{id}")
     public ResponseEntity<Pago> getById(@PathVariable Long id) {
@@ -25,12 +26,12 @@ public class PagoController {
     }
 
     @GetMapping("/tratamiento/{tratamientoId}")
-    public List<Pago> getByTratamiento(@PathVariable Long tratamientoId) {
+    public List<PagoDTO> getByTratamiento(@PathVariable Long tratamientoId) {
         return service.findByTratamiento(tratamientoId);
     }
 
     @GetMapping("/paciente/{pacienteId}")
-    public List<Pago> getByPaciente(@PathVariable Long pacienteId) {
+    public List<PagoDTO> getByPaciente(@PathVariable Long pacienteId) {
         return service.findByPaciente(pacienteId);
     }
 

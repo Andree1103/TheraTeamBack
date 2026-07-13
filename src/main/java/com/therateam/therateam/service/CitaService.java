@@ -6,7 +6,6 @@ import com.therateam.therateam.dto.CitaRapidaRequest;
 import com.therateam.therateam.dto.PacienteInput;
 import com.therateam.therateam.model.*;
 import com.therateam.therateam.repository.*;
-import com.therateam.therateam.specification.CitaSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -39,26 +38,27 @@ public class CitaService {
     private final DisponibilidadService disponibilidadService;
 
     public List<CitaDTO> findAll() {
-        return citaRepository.findAll().stream().map(this::toDTO).toList();
+        return citaRepository.findAllProjected(org.springframework.data.domain.Pageable.unpaged()).getContent();
     }
 
     public Page<CitaDTO> findAllPaged(Pageable pageable) {
-        return citaRepository.findAll(pageable).map(this::toDTO);
+        return citaRepository.findAllProjected(pageable);
     }
 
     public Page<CitaDTO> findByFiltrosPaged(LocalDateTime fechaInicio, LocalDateTime fechaFin,
                                              String terapeuta, Pageable pageable) {
-        return citaRepository.findAll(CitaSpecification.byFiltros(fechaInicio, fechaFin, terapeuta), pageable)
-                .map(this::toDTO);
+        String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
+        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, pageable);
     }
 
     public List<CitaDTO> findByFiltros(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta) {
-        return citaRepository.findAll(CitaSpecification.byFiltros(fechaInicio, fechaFin, terapeuta))
-                .stream().map(this::toDTO).toList();
+        String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
+        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro,
+                org.springframework.data.domain.Pageable.unpaged()).getContent();
     }
 
     public Optional<CitaDTO> findById(Long id) {
-        return citaRepository.findById(id).map(this::toDTO);
+        return citaRepository.findByIdProjected(id);
     }
 
     public Cita save(Cita cita) { return citaRepository.save(cita); }

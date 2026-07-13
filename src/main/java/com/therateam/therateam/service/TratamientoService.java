@@ -24,17 +24,17 @@ public class TratamientoService {
 
     @Transactional(readOnly = true)
     public Page<TratamientoDTO> findAllPaged(Pageable pageable) {
-        return repository.findAll(pageable).map(this::toDTO);
+        return repository.findAllProjected(pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<TratamientoDTO> findByPacientePaged(Long pacienteId, Pageable pageable) {
-        return repository.findByPacienteId(pacienteId, pageable).map(this::toDTO);
+        return repository.findByPacienteIdProjected(pacienteId, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<TratamientoDTO> findByTerapeutaPaged(Long terapeutaId, Pageable pageable) {
-        return repository.findByTerapeutaId(terapeutaId, pageable).map(this::toDTO);
+        return repository.findByTerapeutaIdProjected(terapeutaId, pageable);
     }
 
     public List<Tratamiento> findAll() { return repository.findAll(); }

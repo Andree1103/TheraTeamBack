@@ -1,6 +1,8 @@
 package com.therateam.therateam.service;
 
+import com.therateam.therateam.dto.PagoDTO;
 import com.therateam.therateam.model.Pago;
+import com.therateam.therateam.model.Tratamiento;
 import com.therateam.therateam.repository.CatEstadoPagoCitaRepository;
 import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PagoRepository;
@@ -22,13 +24,42 @@ public class PagoService {
     private final CatEstadoPagoCitaRepository catEstadoPagoCitaRepository;
     private final TratamientoRepository tratamientoRepository;
 
-    public List<Pago> findAll() { return repository.findAll(); }
+    public List<PagoDTO> findAll() { return repository.findAllProjected(); }
     public Optional<Pago> findById(Long id) { return repository.findById(id); }
-    public List<Pago> findByTratamiento(Long tratamientoId) { return repository.findByTratamientoId(tratamientoId); }
-    public List<Pago> findByPaciente(Long pacienteId) { return repository.findByPacienteId(pacienteId); }
+    public List<PagoDTO> findByTratamiento(Long tratamientoId) { return repository.findByTratamientoIdProjected(tratamientoId); }
+    public List<PagoDTO> findByPaciente(Long pacienteId) { return repository.findByPacienteIdProjected(pacienteId); }
 
+    /**
+     * Aplica el pago contra la deuda pendiente del tratamiento (sesiones atendidas x precio - ya cobrado),
+     * usando primero el saldo a favor arrastrado del tratamiento. El excedente se guarda como nuevo saldo a favor.
+     */
     @Transactional
     public Pago save(Pago p) {
+        if (p.getTratamiento() != null && p.getTratamiento().getId() != null && p.getMontoRecibido() != null) {
+            Tratamiento t = tratamientoRepository.findById(p.getTratamiento().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Tratamiento no encontrado"));
+
+            BigDecimal precio       = t.getPrecioPorSesion()  != null ? t.getPrecioPorSesion()  : BigDecimal.ZERO;
+            int atendidas            = t.getSesionesAtendidas() != null ? t.getSesionesAtendidas() : 0;
+            BigDecimal totalCobrado  = t.getTotalCobrado()     != null ? t.getTotalCobrado()     : BigDecimal.ZERO;
+            BigDecimal saldoPrevio   = t.getSaldoAFavor()      != null ? t.getSaldoAFavor()      : BigDecimal.ZERO;
+
+            BigDecimal deudaPendiente = precio.multiply(BigDecimal.valueOf(atendidas)).subtract(totalCobrado);
+            if (deudaPendiente.compareTo(BigDecimal.ZERO) < 0) deudaPendiente = BigDecimal.ZERO;
+
+            BigDecimal montoDisponible = p.getMontoRecibido().add(saldoPrevio);
+            BigDecimal montoAplicado   = montoDisponible.min(deudaPendiente);
+            BigDecimal saldoGenerado   = montoDisponible.subtract(montoAplicado);
+
+            p.setSaldoPrevio(saldoPrevio);
+            p.setMontoAplicado(montoAplicado);
+            p.setSaldoGenerado(saldoGenerado);
+
+            t.setTotalCobrado(totalCobrado.add(montoAplicado));
+            t.setSaldoAFavor(saldoGenerado);
+            tratamientoRepository.save(t);
+        }
+
         Pago saved = repository.save(p);
 
         // Marcar la cita como PAGADA cargando la entidad completa desde BD
@@ -41,22 +72,27 @@ public class PagoService {
             );
         }
 
-        // Actualizar totalCobrado del tratamiento
-        if (saved.getTratamiento() != null && saved.getTratamiento().getId() != null
-                && saved.getMontoAplicado() != null) {
-            tratamientoRepository.findById(saved.getTratamiento().getId()).ifPresent(t -> {
-                BigDecimal prev = t.getTotalCobrado() != null ? t.getTotalCobrado() : BigDecimal.ZERO;
-                t.setTotalCobrado(prev.add(saved.getMontoAplicado()));
-                tratamientoRepository.save(t);
-            });
-        }
-
         return saved;
     }
 
+    /** Revierte el efecto de un pago sobre el tratamiento (usado al editar o eliminar). */
+    private void revertir(Pago p) {
+        if (p.getTratamiento() == null || p.getTratamiento().getId() == null) return;
+        tratamientoRepository.findById(p.getTratamiento().getId()).ifPresent(t -> {
+            BigDecimal totalCobrado = t.getTotalCobrado() != null ? t.getTotalCobrado() : BigDecimal.ZERO;
+            BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
+            t.setTotalCobrado(totalCobrado.subtract(montoAplicado).max(BigDecimal.ZERO));
+            // El saldo a favor que dejó este pago se retira; el saldo previo a este pago se restaura.
+            t.setSaldoAFavor(p.getSaldoPrevio() != null ? p.getSaldoPrevio() : BigDecimal.ZERO);
+            tratamientoRepository.save(t);
+        });
+    }
+
     public boolean delete(Long id) {
-        if (!repository.existsById(id)) return false;
-        repository.deleteById(id);
-        return true;
+        return repository.findById(id).map(p -> {
+            revertir(p);
+            repository.deleteById(id);
+            return true;
+        }).orElse(false);
     }
 }
