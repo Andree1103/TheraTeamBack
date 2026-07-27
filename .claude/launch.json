@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "therateam-front",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\setie\\OneDrive\\Documentos\\CodeWHITE\\therateam && npm start"],
+      "port": 4200
+    }
+  ]
+}

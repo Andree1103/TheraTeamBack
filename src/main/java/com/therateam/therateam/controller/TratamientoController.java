@@ -1,6 +1,7 @@
 package com.therateam.therateam.controller;
 
 import com.therateam.therateam.dto.SesionDTO;
+import com.therateam.therateam.dto.TratamientoCoberturaDTO;
 import com.therateam.therateam.dto.TratamientoDTO;
 import com.therateam.therateam.model.Tratamiento;
 import com.therateam.therateam.service.TratamientoService;
@@ -38,6 +39,12 @@ public class TratamientoController {
     @GetMapping("/{id}/sesiones")
     public ResponseEntity<List<SesionDTO>> getSesiones(@PathVariable Long id) {
         return ResponseEntity.ok(service.getSesionesByTratamiento(id));
+    }
+
+    /** Cuántas sesiones ya tienen cita creada y cuántas de esas están pagadas/pendientes. */
+    @GetMapping("/{id}/cobertura")
+    public ResponseEntity<TratamientoCoberturaDTO> getCobertura(@PathVariable Long id) {
+        return ResponseEntity.ok(service.cobertura(id));
     }
 
     /** GET /api/tratamientos/paciente/{id}?page=0&size=20 */

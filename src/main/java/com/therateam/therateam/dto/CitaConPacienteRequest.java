@@ -29,4 +29,12 @@ public class CitaConPacienteRequest {
 
     /** Precio por sesión del plan */
     private java.math.BigDecimal precioPorSesion;
+
+    /**
+     * Opcional: id de un tratamiento YA EXISTENTE del paciente al que enganchar estas citas
+     * (en vez de buscar/crear uno por terapeuta+tipoTerapia). Útil cuando el tratamiento ya
+     * tiene sesiones pagadas por adelantado — las citas que caigan dentro de lo ya cobrado
+     * se marcan PAGADA automáticamente, sin generar un pago nuevo.
+     */
+    private Long tratamientoId;
 }

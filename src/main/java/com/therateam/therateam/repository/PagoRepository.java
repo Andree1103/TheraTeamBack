@@ -5,11 +5,23 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.time.LocalDateTime;
 import java.util.List;
 @Repository
 public interface PagoRepository extends JpaRepository<Pago, Long> {
     List<Pago> findByTratamientoId(Long tratamientoId);
     List<Pago> findByPacienteId(Long pacienteId);
+
+    /** Ingresos del día agrupados por método de pago — para el cierre de caja. */
+    @Query("""
+        SELECT m.id, m.nombre, SUM(pg.montoRecibido)
+        FROM Pago pg
+        LEFT JOIN pg.metodo m
+        WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+        GROUP BY m.id, m.nombre
+        """)
+    List<Object[]> sumMontoPorMetodoEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
+                                                 @Param("finDia") LocalDateTime finDia);
 
     /**
      * Proyección liviana para listados: evita la cadena EAGER completa de Pago.tratamiento

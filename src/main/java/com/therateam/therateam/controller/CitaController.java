@@ -48,6 +48,12 @@ public class CitaController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /** GET /api/citas/paciente/{id} — historial de citas de un paciente */
+    @GetMapping("/paciente/{pacienteId}")
+    public List<CitaDTO> getByPaciente(@PathVariable Long pacienteId) {
+        return service.findByPaciente(pacienteId);
+    }
+
     @PostMapping
     public ResponseEntity<Cita> create(@RequestBody Cita cita) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(cita));

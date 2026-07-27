@@ -1,6 +1,7 @@
 package com.therateam.therateam.service;
 
 import com.therateam.therateam.dto.SesionDTO;
+import com.therateam.therateam.dto.TratamientoCoberturaDTO;
 import com.therateam.therateam.dto.TratamientoDTO;
 import com.therateam.therateam.model.*;
 import com.therateam.therateam.repository.SesionRepository;
@@ -65,6 +66,23 @@ public class TratamientoService {
         if (!repository.existsById(id)) return false;
         repository.deleteById(id);
         return true;
+    }
+
+    /**
+     * Cuántas sesiones ya tienen cita creada (de las planificadas) y cuántas de esas
+     * ya están pagadas vs pendientes de pago. Se calcula solo cuando se pide (no en el
+     * listado paginado) para no cargarle joins a la consulta pesada.
+     */
+    @Transactional(readOnly = true)
+    public TratamientoCoberturaDTO cobertura(Long tratamientoId) {
+        List<Sesion> sesiones = sesionRepository.findByTratamientoId(tratamientoId);
+        int creadas = sesiones.size();
+        int pagadas = (int) sesiones.stream()
+                .filter(s -> s.getCitaActiva() != null
+                        && s.getCitaActiva().getEstadoPago() != null
+                        && "PAGADA".equals(s.getCitaActiva().getEstadoPago().getKey()))
+                .count();
+        return new TratamientoCoberturaDTO(creadas, pagadas, creadas - pagadas);
     }
 
     @Transactional(readOnly = true)

@@ -46,8 +46,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         FROM Cita c
         LEFT JOIN c.sesion s
         LEFT JOIN s.tratamiento t
-        LEFT JOIN t.paciente p
-        LEFT JOIN t.tipoTerapia tt
+        LEFT JOIN c.paciente p
+        LEFT JOIN c.tipoTerapia tt
         LEFT JOIN c.terapeuta ter
         LEFT JOIN ter.usuario u
         LEFT JOIN c.estado e
@@ -71,8 +71,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         FROM Cita c
         LEFT JOIN c.sesion s
         LEFT JOIN s.tratamiento t
-        LEFT JOIN t.paciente p
-        LEFT JOIN t.tipoTerapia tt
+        LEFT JOIN c.paciente p
+        LEFT JOIN c.tipoTerapia tt
         LEFT JOIN c.terapeuta ter
         LEFT JOIN ter.usuario u
         LEFT JOIN c.estado e
@@ -103,8 +103,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         FROM Cita c
         LEFT JOIN c.sesion s
         LEFT JOIN s.tratamiento t
-        LEFT JOIN t.paciente p
-        LEFT JOIN t.tipoTerapia tt
+        LEFT JOIN c.paciente p
+        LEFT JOIN c.tipoTerapia tt
         LEFT JOIN c.terapeuta ter
         LEFT JOIN ter.usuario u
         LEFT JOIN c.estado e
@@ -113,4 +113,32 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         WHERE c.id = :id
         """)
     java.util.Optional<CitaDTO> findByIdProjected(@Param("id") Long id);
+
+    /** Historial de citas de un paciente (directo, ya no depende de sesión/tratamiento). */
+    @Query("""
+        SELECT new com.therateam.therateam.dto.CitaDTO(
+            c.id, s.id, s.numero, t.totalSesiones,
+            p.id, p.nombre, p.apellido, p.dni, p.telefono, p.correo,
+            ter.id, CONCAT(u.nombre, ' ', u.apellido),
+            tt.key, tt.nombre,
+            c.duracionMinutos, c.fechaInicio, c.fechaFin,
+            e.key, e.nombre, e.colorHex,
+            m.key, t.notas,
+            c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
+            ep.key, ep.nombre, ep.color
+        )
+        FROM Cita c
+        LEFT JOIN c.sesion s
+        LEFT JOIN s.tratamiento t
+        LEFT JOIN c.paciente p
+        LEFT JOIN c.tipoTerapia tt
+        LEFT JOIN c.terapeuta ter
+        LEFT JOIN ter.usuario u
+        LEFT JOIN c.estado e
+        LEFT JOIN c.modalidad m
+        LEFT JOIN c.estadoPago ep
+        WHERE p.id = :pacienteId
+        ORDER BY c.fechaInicio DESC
+        """)
+    List<CitaDTO> findByPacienteIdProjected(@Param("pacienteId") Long pacienteId);
 }

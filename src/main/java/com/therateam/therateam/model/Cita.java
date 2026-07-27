@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -13,8 +14,26 @@ public class Cita {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @JsonIgnoreProperties({"citaActiva", "tratamiento"})
+    /** Paciente directo de la cita — ya NO depende de pasar por sesión→tratamiento. */
     @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "paciente_id")
+    private Paciente paciente;
+
+    /** Tipo de terapia directo de la cita (duración/capacidad/nombre) — independiente de si hay paquete. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "tipo_terapia_id")
+    private TipoTerapia tipoTerapia;
+
+    /** Precio acordado para esta cita puntual (si no está ligada a un paquete que ya trae su propio precio). */
+    private BigDecimal precio;
+
+    /**
+     * Opcional: solo se llena cuando la cita se creó eligiendo un paquete existente —
+     * indica qué sesión de ese paquete cubre esta cita. Una cita "normal" (sin paquete)
+     * no tiene sesión; al atenderse se registra como AtencionClinica, no como Sesion.
+     */
+    @JsonIgnoreProperties({"citaActiva", "tratamiento"})
+    @ManyToOne(fetch = FetchType.EAGER, optional = true)
     @JoinColumn(name = "sesion_id")
     private Sesion sesion;
 

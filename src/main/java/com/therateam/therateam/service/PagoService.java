@@ -30,8 +30,11 @@ public class PagoService {
     public List<PagoDTO> findByPaciente(Long pacienteId) { return repository.findByPacienteIdProjected(pacienteId); }
 
     /**
-     * Aplica el pago contra la deuda pendiente del tratamiento (sesiones atendidas x precio - ya cobrado),
-     * usando primero el saldo a favor arrastrado del tratamiento. El excedente se guarda como nuevo saldo a favor.
+     * Aplica el pago contra la deuda pendiente del PAQUETE completo (precio total del paquete
+     * menos lo ya cobrado) — no contra las sesiones atendidas. Un paquete se vende y se cobra
+     * por adelantado (total o en cuotas); las sesiones se van consumiendo aparte, a su propio
+     * ritmo, vía atención clínica. Usa primero el saldo a favor arrastrado; el excedente por
+     * encima del precio total del paquete se guarda como nuevo saldo a favor.
      */
     @Transactional
     public Pago save(Pago p) {
@@ -39,12 +42,13 @@ public class PagoService {
             Tratamiento t = tratamientoRepository.findById(p.getTratamiento().getId())
                     .orElseThrow(() -> new IllegalArgumentException("Tratamiento no encontrado"));
 
-            BigDecimal precio       = t.getPrecioPorSesion()  != null ? t.getPrecioPorSesion()  : BigDecimal.ZERO;
-            int atendidas            = t.getSesionesAtendidas() != null ? t.getSesionesAtendidas() : 0;
+            BigDecimal precio        = t.getPrecioPorSesion()  != null ? t.getPrecioPorSesion()  : BigDecimal.ZERO;
+            int totalSesiones        = t.getTotalSesiones()    != null ? t.getTotalSesiones()    : 0;
+            BigDecimal montoTotal    = precio.multiply(BigDecimal.valueOf(totalSesiones));
             BigDecimal totalCobrado  = t.getTotalCobrado()     != null ? t.getTotalCobrado()     : BigDecimal.ZERO;
             BigDecimal saldoPrevio   = t.getSaldoAFavor()      != null ? t.getSaldoAFavor()      : BigDecimal.ZERO;
 
-            BigDecimal deudaPendiente = precio.multiply(BigDecimal.valueOf(atendidas)).subtract(totalCobrado);
+            BigDecimal deudaPendiente = montoTotal.subtract(totalCobrado);
             if (deudaPendiente.compareTo(BigDecimal.ZERO) < 0) deudaPendiente = BigDecimal.ZERO;
 
             BigDecimal montoDisponible = p.getMontoRecibido().add(saldoPrevio);
@@ -58,6 +62,12 @@ public class PagoService {
             t.setTotalCobrado(totalCobrado.add(montoAplicado));
             t.setSaldoAFavor(saldoGenerado);
             tratamientoRepository.save(t);
+        } else if (p.getMontoRecibido() != null) {
+            // Pago normal de una cita suelta (sin paquete): el monto se aplica entero a esa
+            // cita puntual, sin arrastrar saldo a favor de ningún tratamiento.
+            p.setSaldoPrevio(BigDecimal.ZERO);
+            p.setMontoAplicado(p.getMontoRecibido());
+            p.setSaldoGenerado(BigDecimal.ZERO);
         }
 
         Pago saved = repository.save(p);
