@@ -41,7 +41,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             e.key, e.nombre, e.colorHex,
             m.key, t.notas,
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
-            ep.key, ep.nombre, ep.color
+            ep.key, ep.nombre, ep.color,
+            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -66,7 +67,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             e.key, e.nombre, e.colorHex,
             m.key, t.notas,
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
-            ep.key, ep.nombre, ep.color
+            ep.key, ep.nombre, ep.color,
+            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -98,7 +100,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             e.key, e.nombre, e.colorHex,
             m.key, t.notas,
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
-            ep.key, ep.nombre, ep.color
+            ep.key, ep.nombre, ep.color,
+            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -125,7 +128,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             e.key, e.nombre, e.colorHex,
             m.key, t.notas,
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
-            ep.key, ep.nombre, ep.color
+            ep.key, ep.nombre, ep.color,
+            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre
         )
         FROM Cita c
         LEFT JOIN c.sesion s

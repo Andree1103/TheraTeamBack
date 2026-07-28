@@ -24,6 +24,9 @@ public class CitaConPacienteRequest {
     /** Opcional: clave de modalidad (PRESENCIAL, ONLINE, etc.) */
     private String modalidadKey;
 
+    /** Clasificación de la cita: FIJO, EVENTUAL o SOLO_HOY. Default EVENTUAL si no se envía. */
+    private String tipoRecurrencia;
+
     /** Total de sesiones del plan — usado para fijar totalSesiones al crear tratamiento */
     private Integer totalSesionesPlan;
 

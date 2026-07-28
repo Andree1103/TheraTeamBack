@@ -79,6 +79,7 @@ public class CitaService {
             e.setLinkVideollamada(data.getLinkVideollamada());
             e.setNotasPrevias(data.getNotasPrevias());
             e.setRecordatorioEnviado(data.getRecordatorioEnviado());
+            if (data.getTipoRecurrencia() != null) e.setTipoRecurrencia(data.getTipoRecurrencia());
 
             TipoTerapia tipo = e.getTipoTerapia() != null ? e.getTipoTerapia()
                     : (e.getSesion() != null && e.getSesion().getTratamiento() != null
@@ -138,6 +139,8 @@ public class CitaService {
      */
     @Transactional
     public CitaDTO crearRapida(CitaRapidaRequest req) {
+        validarFechaNoPasada(req.getFechaInicio());
+
         Paciente paciente = pacienteRepository.findById(req.getPacienteId())
                 .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado: " + req.getPacienteId()));
 
@@ -207,6 +210,7 @@ public class CitaService {
         cita.setDuracionMinutos(req.getDuracionMinutos());
         cita.setNotasPrevias(req.getNotasPrevias());
         cita.setLinkVideollamada(req.getLinkVideollamada());
+        cita.setTipoRecurrencia(req.getTipoRecurrencia() != null ? req.getTipoRecurrencia() : "EVENTUAL");
         cita = citaRepository.save(cita);
 
         if (sesion != null) {
@@ -283,6 +287,8 @@ public class CitaService {
 
     @Transactional
     public List<CitaDTO> crearConPaciente(CitaConPacienteRequest req) {
+        validarFechaNoPasada(req.getFechaInicio());
+
         Terapeuta terapeuta = null;
         if (req.getTerapeutaNombre() != null && !req.getTerapeutaNombre().isBlank()) {
             List<Terapeuta> matches = terapeutaRepository.findByNombreCompleto(req.getTerapeutaNombre());
@@ -324,18 +330,20 @@ public class CitaService {
 
         List<CitaDTO> resultado = new java.util.ArrayList<>();
 
+        String tipoRecurrencia = req.getTipoRecurrencia() != null ? req.getTipoRecurrencia() : "EVENTUAL";
+
         Paciente p1 = buscarOCrearPaciente(req.getPaciente());
         if (p1 != null) {
             resultado.add(crearCitaParaPaciente(p1, terapeuta, tipoTerapia, estadoCita, modalidad,
                     req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
-                    req.getPrecioPorSesion(), req.getTratamientoId()));
+                    req.getPrecioPorSesion(), req.getTratamientoId(), tipoRecurrencia));
         }
 
         if (req.getPaciente2() != null) {
             Paciente p2 = buscarOCrearPaciente(req.getPaciente2());
             resultado.add(crearCitaParaPaciente(p2, terapeuta, tipoTerapia, estadoCita, modalidad,
                     req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
-                    req.getPrecioPorSesion(), null));
+                    req.getPrecioPorSesion(), null, tipoRecurrencia));
         }
 
         return resultado;
@@ -347,7 +355,8 @@ public class CitaService {
                                            LocalDateTime fechaFin, Integer duracionMinutos,
                                            String observacion,
                                            BigDecimal precioPorSesion,
-                                           Long tratamientoIdExplicito) {
+                                           Long tratamientoIdExplicito,
+                                           String tipoRecurrencia) {
         validarDisponibilidad(terapeuta, fechaInicio, fechaFin,
                 tipoTerapia != null ? tipoTerapia.getMaxPacientes() : null, null);
 
@@ -392,6 +401,7 @@ public class CitaService {
         cita.setFechaFin(fechaFin);
         cita.setDuracionMinutos(duracionMinutos);
         if (observacion != null) cita.setNotasPrevias(observacion);
+        cita.setTipoRecurrencia(tipoRecurrencia != null ? tipoRecurrencia : "EVENTUAL");
         cita = citaRepository.save(cita);
 
         if (sesion != null) {
@@ -407,6 +417,13 @@ public class CitaService {
      * una excepción) y que no supere el cupo simultáneo (maxPacientes) del tipo de terapia.
      * Lanza IllegalArgumentException (→ 400) si no cumple.
      */
+    /** No se pueden programar citas nuevas en una fecha/hora que ya pasó. */
+    private void validarFechaNoPasada(LocalDateTime fechaInicio) {
+        if (fechaInicio != null && fechaInicio.isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("No se puede crear una cita en una fecha u hora pasada.");
+        }
+    }
+
     private void validarDisponibilidad(Terapeuta terapeuta, LocalDateTime inicio, LocalDateTime fin,
                                         Integer maxPacientes, Long excluirCitaId) {
         if (terapeuta == null || terapeuta.getId() == null || inicio == null || fin == null) return;
@@ -436,6 +453,9 @@ public class CitaService {
         dto.setLinkVideollamada(c.getLinkVideollamada());
         dto.setNotasPrevias(c.getNotasPrevias());
         dto.setRecordatorioEnviado(c.getRecordatorioEnviado());
+        dto.setTipoRecurrencia(c.getTipoRecurrencia());
+        dto.setPrecio(c.getPrecio());
+        dto.setMontoPagado(c.getMontoPagado());
 
         if (c.getEstado() != null) {
             dto.setEstado(c.getEstado().getKey());
@@ -485,6 +505,8 @@ public class CitaService {
             if (t != null) {
                 dto.setTotalSesiones(t.getTotalSesiones());
                 dto.setObservacion(t.getNotas());
+                dto.setTratamientoId(t.getId());
+                dto.setTratamientoNombre(t.getNombre());
             }
         }
 

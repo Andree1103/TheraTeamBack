@@ -1,6 +1,7 @@
 package com.therateam.therateam.service;
 
 import com.therateam.therateam.dto.PagoDTO;
+import com.therateam.therateam.model.Cita;
 import com.therateam.therateam.model.Pago;
 import com.therateam.therateam.model.Tratamiento;
 import com.therateam.therateam.repository.CatEstadoPagoCitaRepository;
@@ -38,6 +39,16 @@ public class PagoService {
      */
     @Transactional
     public Pago save(Pago p) {
+        Cita citaAsociada = null;
+        if (p.getCita() != null && p.getCita().getId() != null) {
+            citaAsociada = citaRepository.findById(p.getCita().getId()).orElse(null);
+        }
+        boolean citaConPrecioDeReferencia = citaAsociada != null && citaAsociada.getPrecio() != null
+                && citaAsociada.getPrecio().compareTo(BigDecimal.ZERO) > 0;
+        // Solo la rama de adelantos (cita suelta, sin paquete) deja el estado_pago ya resuelto —
+        // un pago de paquete NO debe entrar aquí aunque la cita también tenga su propio precio.
+        boolean resueltoPorAdelanto = false;
+
         if (p.getTratamiento() != null && p.getTratamiento().getId() != null && p.getMontoRecibido() != null) {
             Tratamiento t = tratamientoRepository.findById(p.getTratamiento().getId())
                     .orElseThrow(() -> new IllegalArgumentException("Tratamiento no encontrado"));
@@ -62,9 +73,28 @@ public class PagoService {
             t.setTotalCobrado(totalCobrado.add(montoAplicado));
             t.setSaldoAFavor(saldoGenerado);
             tratamientoRepository.save(t);
+        } else if (p.getMontoRecibido() != null && citaConPrecioDeReferencia) {
+            // Pago (adelanto o completo) de una cita suelta con precio propio: se acumula contra
+            // ese precio — puede cubrirlo de a pocos (adelantos) hasta llegar a PAGADA.
+            BigDecimal precio            = citaAsociada.getPrecio();
+            BigDecimal montoPagadoActual = citaAsociada.getMontoPagado() != null ? citaAsociada.getMontoPagado() : BigDecimal.ZERO;
+            BigDecimal deudaPendiente    = precio.subtract(montoPagadoActual).max(BigDecimal.ZERO);
+            BigDecimal montoAplicado     = p.getMontoRecibido().min(deudaPendiente);
+            BigDecimal saldoGenerado     = p.getMontoRecibido().subtract(montoAplicado);
+
+            p.setSaldoPrevio(BigDecimal.ZERO);
+            p.setMontoAplicado(montoAplicado);
+            p.setSaldoGenerado(saldoGenerado);
+
+            BigDecimal montoPagadoNuevo = montoPagadoActual.add(montoAplicado);
+            citaAsociada.setMontoPagado(montoPagadoNuevo);
+            citaAsociada.setEstadoPago(catEstadoPagoCitaRepository.findByKey(
+                    estadoPagoPorMonto(montoPagadoNuevo, precio)).orElse(null));
+            citaRepository.save(citaAsociada);
+            resueltoPorAdelanto = true;
         } else if (p.getMontoRecibido() != null) {
-            // Pago normal de una cita suelta (sin paquete): el monto se aplica entero a esa
-            // cita puntual, sin arrastrar saldo a favor de ningún tratamiento.
+            // Pago normal sin precio de referencia en la cita (comportamiento previo: se aplica
+            // todo el monto, sin arrastrar saldo a favor de ningún tratamiento).
             p.setSaldoPrevio(BigDecimal.ZERO);
             p.setMontoAplicado(p.getMontoRecibido());
             p.setSaldoGenerado(BigDecimal.ZERO);
@@ -72,8 +102,10 @@ public class PagoService {
 
         Pago saved = repository.save(p);
 
-        // Marcar la cita como PAGADA cargando la entidad completa desde BD
-        if (saved.getCita() != null && saved.getCita().getId() != null) {
+        // La rama de adelantos (arriba) ya dejó el estado_pago correcto según lo cobrado; para el
+        // resto de casos (paquete, o cita sin precio propio) se conserva el comportamiento previo:
+        // cualquier pago ligado a la cita la marca PAGADA de una vez.
+        if (!resueltoPorAdelanto && saved.getCita() != null && saved.getCita().getId() != null) {
             citaRepository.findById(saved.getCita().getId()).ifPresent(cita ->
                 catEstadoPagoCitaRepository.findByKey("PAGADA").ifPresent(pagada -> {
                     cita.setEstadoPago(pagada);
@@ -85,17 +117,37 @@ public class PagoService {
         return saved;
     }
 
-    /** Revierte el efecto de un pago sobre el tratamiento (usado al editar o eliminar). */
+    private String estadoPagoPorMonto(BigDecimal montoPagado, BigDecimal precio) {
+        if (montoPagado.compareTo(precio) >= 0) return "PAGADA";
+        if (montoPagado.compareTo(BigDecimal.ZERO) > 0) return "PARCIAL";
+        return "SIN_PAGO";
+    }
+
+    /** Revierte el efecto de un pago sobre el tratamiento o la cita suelta (usado al eliminar). */
     private void revertir(Pago p) {
-        if (p.getTratamiento() == null || p.getTratamiento().getId() == null) return;
-        tratamientoRepository.findById(p.getTratamiento().getId()).ifPresent(t -> {
-            BigDecimal totalCobrado = t.getTotalCobrado() != null ? t.getTotalCobrado() : BigDecimal.ZERO;
-            BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
-            t.setTotalCobrado(totalCobrado.subtract(montoAplicado).max(BigDecimal.ZERO));
-            // El saldo a favor que dejó este pago se retira; el saldo previo a este pago se restaura.
-            t.setSaldoAFavor(p.getSaldoPrevio() != null ? p.getSaldoPrevio() : BigDecimal.ZERO);
-            tratamientoRepository.save(t);
-        });
+        if (p.getTratamiento() != null && p.getTratamiento().getId() != null) {
+            tratamientoRepository.findById(p.getTratamiento().getId()).ifPresent(t -> {
+                BigDecimal totalCobrado = t.getTotalCobrado() != null ? t.getTotalCobrado() : BigDecimal.ZERO;
+                BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
+                t.setTotalCobrado(totalCobrado.subtract(montoAplicado).max(BigDecimal.ZERO));
+                // El saldo a favor que dejó este pago se retira; el saldo previo a este pago se restaura.
+                t.setSaldoAFavor(p.getSaldoPrevio() != null ? p.getSaldoPrevio() : BigDecimal.ZERO);
+                tratamientoRepository.save(t);
+            });
+            return;
+        }
+        if (p.getCita() != null && p.getCita().getId() != null) {
+            citaRepository.findById(p.getCita().getId()).ifPresent(cita -> {
+                if (cita.getPrecio() == null || cita.getPrecio().compareTo(BigDecimal.ZERO) <= 0) return;
+                BigDecimal montoPagado  = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
+                BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
+                BigDecimal nuevo = montoPagado.subtract(montoAplicado).max(BigDecimal.ZERO);
+                cita.setMontoPagado(nuevo);
+                cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey(
+                        estadoPagoPorMonto(nuevo, cita.getPrecio())).orElse(null));
+                citaRepository.save(cita);
+            });
+        }
     }
 
     public boolean delete(Long id) {

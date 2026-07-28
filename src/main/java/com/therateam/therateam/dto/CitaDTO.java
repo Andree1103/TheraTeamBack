@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -20,7 +21,9 @@ public class CitaDTO {
                     String estado, String estadoNombre, String estadoColor,
                     String modalidad, String observacion,
                     String notasPrevias, String linkVideollamada, Boolean recordatorioEnviado,
-                    String estadoPagoKey, String estadoPagoNombre, String estadoPagoColor) {
+                    String estadoPagoKey, String estadoPagoNombre, String estadoPagoColor,
+                    String tipoRecurrencia, BigDecimal precio, BigDecimal montoPagado,
+                    Long tratamientoId, String tratamientoNombre) {
         this.id = id;
         this.sesionId = sesionId;
         this.numeroSesion = numeroSesion;
@@ -49,6 +52,11 @@ public class CitaDTO {
         this.estadoPagoKey = estadoPagoKey;
         this.estadoPagoNombre = estadoPagoNombre;
         this.estadoPagoColor = estadoPagoColor;
+        this.tipoRecurrencia = tipoRecurrencia;
+        this.precio = precio;
+        this.montoPagado = montoPagado;
+        this.tratamientoId = tratamientoId;
+        this.tratamientoNombre = tratamientoNombre;
     }
 
     private Long id;
@@ -129,4 +137,18 @@ public class CitaDTO {
 
     @JsonProperty("estado_pago_color")
     private String estadoPagoColor;
+
+    @JsonProperty("tipo_recurrencia")
+    private String tipoRecurrencia;
+
+    private BigDecimal precio;
+
+    @JsonProperty("monto_pagado")
+    private BigDecimal montoPagado;
+
+    @JsonProperty("tratamiento_id")
+    private Long tratamientoId;
+
+    @JsonProperty("tratamiento_nombre")
+    private String tratamientoNombre;
 }

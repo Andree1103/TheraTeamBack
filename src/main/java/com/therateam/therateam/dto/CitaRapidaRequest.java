@@ -31,6 +31,7 @@ public class CitaRapidaRequest {
     private Integer duracionMinutos;
     private String notasPrevias;
     private String linkVideollamada;
+    private String tipoRecurrencia; // FIJO | EVENTUAL | SOLO_HOY
 
     // Campos de pago (opcionales — si crearPago=true se genera el pago en la misma transacción)
     private boolean crearPago = false;

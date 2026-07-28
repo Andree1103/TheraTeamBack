@@ -36,4 +36,7 @@ public class TipoTerapia {
     /** Notas/reglas adicionales (ej. "Niños menores de 18 meses pasan por una evaluación previa"). */
     @Column(columnDefinition = "TEXT")
     private String comentario;
+
+    /** Precio sugerido para una cita suelta (fuera de paquete) de este tipo — solo un default editable, no obligatorio. */
+    private java.math.BigDecimal precioRecomendado;
 }

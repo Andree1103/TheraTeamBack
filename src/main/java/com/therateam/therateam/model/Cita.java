@@ -28,6 +28,12 @@ public class Cita {
     private BigDecimal precio;
 
     /**
+     * Suma de lo ya cobrado a esta cita puntual (adelantos incluidos) — solo aplica a citas
+     * SIN paquete; las citas de paquete se cobran contra el tratamiento, no aquí. deuda = precio - montoPagado.
+     */
+    private BigDecimal montoPagado;
+
+    /**
      * Opcional: solo se llena cuando la cita se creó eligiendo un paquete existente —
      * indica qué sesión de ese paquete cubre esta cita. Una cita "normal" (sin paquete)
      * no tiene sesión; al atenderse se registra como AtencionClinica, no como Sesion.
@@ -61,6 +67,9 @@ public class Cita {
     private String notasPrevias;
     private Boolean recordatorioEnviado;
 
+    /** Clasificación de la cita: FIJO (horario recurrente permanente), EVENTUAL (ocasional) o SOLO_HOY (única vez, sin intención de repetirse). */
+    private String tipoRecurrencia;
+
     // Autorreferencia: apunta a la cita anterior si es reprogramación
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "reprogramacion_de")
@@ -73,6 +82,8 @@ public class Cita {
     void onCreate() {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();
         if (recordatorioEnviado == null) recordatorioEnviado = false;
+        if (tipoRecurrencia == null) tipoRecurrencia = "EVENTUAL";
+        if (montoPagado == null) montoPagado = BigDecimal.ZERO;
     }
     @PreUpdate
     void onUpdate() { updatedAt = LocalDateTime.now(); }

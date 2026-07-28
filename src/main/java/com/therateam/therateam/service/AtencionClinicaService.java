@@ -42,6 +42,11 @@ public class AtencionClinicaService {
         Cita cita = citaRepository.findById(req.getCitaId())
                 .orElseThrow(() -> new IllegalArgumentException("Cita no encontrada: " + req.getCitaId()));
 
+        if (cita.getEstadoPago() == null || !"PAGADA".equals(cita.getEstadoPago().getKey())) {
+            throw new IllegalArgumentException(
+                    "No se puede registrar atención: la cita no está pagada por completo.");
+        }
+
         boolean esNueva = false;
         AtencionClinica atencion = repository.findByCitaId(req.getCitaId()).orElse(null);
 

@@ -37,6 +37,7 @@ public class TipoTerapiaService {
             existing.setEspecialidad(data.getEspecialidad());
             existing.setSesionesSugeridas(data.getSesionesSugeridas());
             existing.setComentario(data.getComentario());
+            existing.setPrecioRecomendado(data.getPrecioRecomendado());
             return repository.save(existing);
         });
     }
