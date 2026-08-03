@@ -22,6 +22,19 @@ public class PlantillaPaquete {
     /** Etiqueta libre de agrupación (ej. "Paquete Terapia Física") — no es un área ni un tipo de terapia. */
     private String categoria;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "especialidad_id")
+    private CatEspecialidad especialidad;
+
+    /**
+     * Tipo de terapia al que corresponde este paquete — al elegir la plantilla en "Nuevo paquete"
+     * (Tratamiento), esto autocompleta el tipo de terapia y, por lo tanto, el área que filtra
+     * qué terapeutas pueden atenderlo. Opcional: si queda sin asignar, el usuario lo elige a mano.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "tipo_terapia_id")
+    private TipoTerapia tipoTerapia;
+
     private Integer totalSesiones;
 
     private BigDecimal precioTotal;

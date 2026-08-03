@@ -27,6 +27,8 @@ public class PlantillaPaqueteService {
         return repository.findById(id).map(existing -> {
             existing.setNombre(data.getNombre());
             existing.setCategoria(data.getCategoria());
+            existing.setEspecialidad(data.getEspecialidad());
+            existing.setTipoTerapia(data.getTipoTerapia());
             existing.setTotalSesiones(data.getTotalSesiones());
             existing.setPrecioTotal(data.getPrecioTotal());
             existing.setActivo(data.getActivo() != null ? data.getActivo() : existing.getActivo());

@@ -27,8 +27,10 @@ public class TipoTerapia {
     @JoinColumn(name = "area_id")
     private CatArea area;
 
-    /** Especialidad dentro del área (ej. Psicología, Ocupacional, Traumatología). */
-    private String especialidad;
+    /** Especialidad clínica dentro del área (ej. Psicología, Ocupacional, Traumatología). */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "especialidad_id")
+    private CatEspecialidad especialidad;
 
     /** Sesiones sugeridas para completar esta terapia/evaluación (ej. 6 sesiones para Descarte de TDAH). */
     private Integer sesionesSugeridas;
