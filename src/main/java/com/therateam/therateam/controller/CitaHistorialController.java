@@ -1,5 +1,7 @@
 package com.therateam.therateam.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.therateam.therateam.model.CitaHistorial;
 import com.therateam.therateam.service.CitaHistorialService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,7 @@ public class CitaHistorialController {
         return service.findByCita(citaId);
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR')")
     @PostMapping
     public ResponseEntity<CitaHistorial> create(@RequestBody CitaHistorial historial) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(historial));

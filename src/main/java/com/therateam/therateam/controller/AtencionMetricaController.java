@@ -1,5 +1,7 @@
 package com.therateam.therateam.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.therateam.therateam.model.AtencionMetrica;
 import com.therateam.therateam.service.AtencionMetricaService;
 import lombok.RequiredArgsConstructor;
@@ -29,16 +31,19 @@ public class AtencionMetricaController {
         return service.findByAtencion(atencionId);
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR')")
     @PostMapping
     public ResponseEntity<AtencionMetrica> create(@RequestBody AtencionMetrica metrica) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(metrica));
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CITAS_EDITAR')")
     @PutMapping("/{id}")
     public ResponseEntity<AtencionMetrica> update(@PathVariable Long id, @RequestBody AtencionMetrica metrica) {
         return service.update(id, metrica).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CITAS_ELIMINAR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();

@@ -9,10 +9,13 @@ import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PagoRepository;
 import com.therateam.therateam.repository.TratamientoRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,6 +29,18 @@ public class PagoService {
     private final TratamientoRepository tratamientoRepository;
 
     public List<PagoDTO> findAll() { return repository.findAllProjected(); }
+
+    @Transactional(readOnly = true)
+    public Page<PagoDTO> findAllPaged(Pageable pageable, String paciente, String referencia, Long metodoId,
+                                       Boolean tienePaquete, BigDecimal montoMin, BigDecimal montoMax,
+                                       LocalDateTime fechaInicio, LocalDateTime fechaFin) {
+        return repository.buscarPaged(blankToNull(paciente), blankToNull(referencia), metodoId, tienePaquete,
+                montoMin, montoMax, fechaInicio, fechaFin, pageable);
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
+    }
     public Optional<Pago> findById(Long id) { return repository.findById(id); }
     public List<PagoDTO> findByTratamiento(Long tratamientoId) { return repository.findByTratamientoIdProjected(tratamientoId); }
     public List<PagoDTO> findByPaciente(Long pacienteId) { return repository.findByPacienteIdProjected(pacienteId); }

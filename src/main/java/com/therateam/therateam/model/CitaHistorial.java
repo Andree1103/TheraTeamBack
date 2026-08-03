@@ -1,5 +1,6 @@
 package com.therateam.therateam.model;
 
+import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -35,9 +36,13 @@ public class CitaHistorial {
 
     private LocalDateTime createdAt;
 
+    @Column(name = "idusuario_creacion", updatable = false)
+    private Long usuarioCreacionId;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now();
         if (canal == null) canal = "MANUAL";
+        usuarioCreacionId = SecurityUtils.currentUserId();
     }
 }

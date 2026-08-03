@@ -1,5 +1,6 @@
 package com.therateam.therateam.model;
 
+import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -43,11 +44,15 @@ public class Pago {
 
     private LocalDateTime createdAt;
 
+    @Column(name = "idusuario_creacion", updatable = false)
+    private Long usuarioCreacionId;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now();
         if (fechaPago == null) fechaPago = LocalDateTime.now();
         if (saldoGenerado == null) saldoGenerado = BigDecimal.ZERO;
         if (saldoPrevio == null) saldoPrevio = BigDecimal.ZERO;
+        usuarioCreacionId = SecurityUtils.currentUserId();
     }
 }

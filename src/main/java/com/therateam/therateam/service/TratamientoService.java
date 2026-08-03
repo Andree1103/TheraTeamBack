@@ -24,8 +24,14 @@ public class TratamientoService {
     private final SesionRepository sesionRepository;
 
     @Transactional(readOnly = true)
-    public Page<TratamientoDTO> findAllPaged(Pageable pageable) {
-        return repository.findAllProjected(pageable);
+    public Page<TratamientoDTO> findAllPaged(Pageable pageable, String paciente, String terapeuta,
+                                              Long tipoTerapiaId, String estado) {
+        return repository.findAllProjected(blankToNull(paciente), blankToNull(terapeuta),
+                tipoTerapiaId, blankToNull(estado), pageable);
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     @Transactional(readOnly = true)

@@ -1,5 +1,7 @@
 package com.therateam.therateam.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.therateam.therateam.dto.SesionDTO;
 import com.therateam.therateam.dto.TratamientoCoberturaDTO;
 import com.therateam.therateam.dto.TratamientoDTO;
@@ -22,10 +24,14 @@ public class TratamientoController {
 
     private final TratamientoService service;
 
-    /** GET /api/tratamientos?page=0&size=20 */
+    /** GET /api/tratamientos?page=0&size=20&paciente=x&terapeuta=x&tipoTerapiaId=1&estado=EN_CURSO */
     @GetMapping
-    public Page<TratamientoDTO> getAll(@PageableDefault(size = 20) Pageable pageable) {
-        return service.findAllPaged(pageable);
+    public Page<TratamientoDTO> getAll(@PageableDefault(size = 20) Pageable pageable,
+                                        @RequestParam(required = false) String paciente,
+                                        @RequestParam(required = false) String terapeuta,
+                                        @RequestParam(required = false) Long tipoTerapiaId,
+                                        @RequestParam(required = false) String estado) {
+        return service.findAllPaged(pageable, paciente, terapeuta, tipoTerapiaId, estado);
     }
 
     @GetMapping("/{id}")
@@ -61,16 +67,19 @@ public class TratamientoController {
         return service.findByTerapeutaPaged(terapeutaId, pageable);
     }
 
+    @PreAuthorize("hasAuthority('MODULO_PAQUETES_CREAR')")
     @PostMapping
     public ResponseEntity<Tratamiento> create(@RequestBody Tratamiento t) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(t));
     }
 
+    @PreAuthorize("hasAuthority('MODULO_PAQUETES_EDITAR')")
     @PutMapping("/{id}")
     public ResponseEntity<Tratamiento> update(@PathVariable Long id, @RequestBody Tratamiento t) {
         return service.update(id, t).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasAuthority('MODULO_PAQUETES_ELIMINAR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();

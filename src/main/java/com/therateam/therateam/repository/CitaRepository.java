@@ -80,13 +80,15 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.estado e
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
-        WHERE (:fechaInicio IS NULL OR c.fechaInicio >= :fechaInicio)
-          AND (:fechaFin IS NULL OR c.fechaInicio <= :fechaFin)
-          AND (:terapeuta IS NULL OR LOWER(CONCAT(u.nombre, ' ', u.apellido)) LIKE LOWER(CONCAT('%', :terapeuta, '%')))
+        WHERE (CAST(:fechaInicio AS timestamp) IS NULL OR c.fechaInicio >= :fechaInicio)
+          AND (CAST(:fechaFin AS timestamp) IS NULL OR c.fechaInicio <= :fechaFin)
+          AND (CAST(:terapeuta AS string) IS NULL OR LOWER(CONCAT(u.nombre, ' ', u.apellido)) LIKE LOWER(CONCAT('%', CAST(:terapeuta AS string), '%')))
+          AND (CAST(:terapeutaId AS long) IS NULL OR ter.id = :terapeutaId)
         """)
     Page<CitaDTO> findByFiltrosProjected(@Param("fechaInicio") LocalDateTime fechaInicio,
                                           @Param("fechaFin") LocalDateTime fechaFin,
                                           @Param("terapeuta") String terapeuta,
+                                          @Param("terapeutaId") Long terapeutaId,
                                           Pageable pageable);
 
     /** Proyección liviana para un solo registro (GET /{id}). */

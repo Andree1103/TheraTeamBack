@@ -1,5 +1,6 @@
 package com.therateam.therateam.model;
 
+import com.therateam.therateam.config.SecurityUtils;
 import org.hibernate.annotations.BatchSize;
 import jakarta.persistence.*;
 import lombok.*;
@@ -35,6 +36,11 @@ public class Terapeuta {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    @Column(name = "idusuario_creacion", updatable = false)
+    private Long usuarioCreacionId;
+    @Column(name = "idusuario_modificacion")
+    private Long usuarioModificacionId;
+
     @BatchSize(size = 30)
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -45,7 +51,11 @@ public class Terapeuta {
     private List<CatEspecialidad> especialidades = new ArrayList<>();
 
     @PrePersist
-    void onCreate() { createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now(); }
+    void onCreate() {
+        createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();
+        usuarioCreacionId = SecurityUtils.currentUserId();
+        usuarioModificacionId = usuarioCreacionId;
+    }
     @PreUpdate
-    void onUpdate() { updatedAt = LocalDateTime.now(); }
+    void onUpdate() { updatedAt = LocalDateTime.now(); usuarioModificacionId = SecurityUtils.currentUserId(); }
 }

@@ -25,6 +25,7 @@ public class CitaService {
 
     private final CitaRepository citaRepository;
     private final PacienteRepository pacienteRepository;
+    private final PacienteService pacienteService;
     private final TerapeutaRepository terapeutaRepository;
     private final TipoTerapiaRepository tipoTerapiaRepository;
     private final TratamientoRepository tratamientoRepository;
@@ -42,19 +43,21 @@ public class CitaService {
         return citaRepository.findAllProjected(org.springframework.data.domain.Pageable.unpaged()).getContent();
     }
 
-    public Page<CitaDTO> findAllPaged(Pageable pageable) {
-        return citaRepository.findAllProjected(pageable);
+    /** `terapeutaIdRestriccion` acota los resultados a un solo terapeuta (citasSoloPropias=true); null = sin restricción. */
+    public Page<CitaDTO> findAllPaged(Pageable pageable, Long terapeutaIdRestriccion) {
+        if (terapeutaIdRestriccion == null) return citaRepository.findAllProjected(pageable);
+        return citaRepository.findByFiltrosProjected(null, null, null, terapeutaIdRestriccion, pageable);
     }
 
     public Page<CitaDTO> findByFiltrosPaged(LocalDateTime fechaInicio, LocalDateTime fechaFin,
-                                             String terapeuta, Pageable pageable) {
+                                             String terapeuta, Long terapeutaIdRestriccion, Pageable pageable) {
         String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
-        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, pageable);
+        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, terapeutaIdRestriccion, pageable);
     }
 
     public List<CitaDTO> findByFiltros(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta) {
         String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
-        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro,
+        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, null,
                 org.springframework.data.domain.Pageable.unpaged()).getContent();
     }
 
@@ -282,7 +285,8 @@ public class CitaService {
         nuevo.setApellido(input.getApellido());
         nuevo.setTelefono(input.getTelefono());
         nuevo.setCorreo(input.getCorreo());
-        return pacienteRepository.save(nuevo);
+        // Pasa por PacienteService (no el repository directo) para que también se le cree su cuenta de acceso.
+        return pacienteService.save(nuevo);
     }
 
     @Transactional

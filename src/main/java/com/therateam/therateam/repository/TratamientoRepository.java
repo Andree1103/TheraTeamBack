@@ -19,6 +19,7 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
     Page<Tratamiento> findByTerapeutaId(Long terapeutaId, Pageable pageable);
     List<Tratamiento> findByPacienteIdAndTerapeutaIdAndTipoTerapiaId(Long pacienteId, Long terapeutaId, Long tipoTerapiaId);
 
+    /** Cada parámetro nulo/vacío no restringe — filtros por campo separado (paciente, terapeuta, tipo, estado). */
     @Query("""
         SELECT new com.therateam.therateam.dto.TratamientoDTO(
             t.id, t.nombre,
@@ -36,8 +37,16 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
         LEFT JOIN ter.usuario u
         LEFT JOIN t.tipoTerapia tt
         LEFT JOIN t.estado es
+        WHERE (CAST(:paciente AS string) IS NULL
+               OR LOWER(CONCAT(p.nombre, ' ', p.apellido)) LIKE LOWER(CONCAT('%', CAST(:paciente AS string), '%')))
+          AND (CAST(:terapeuta AS string) IS NULL
+               OR LOWER(CONCAT(u.nombre, ' ', u.apellido)) LIKE LOWER(CONCAT('%', CAST(:terapeuta AS string), '%')))
+          AND (CAST(:tipoTerapiaId AS long) IS NULL OR tt.id = :tipoTerapiaId)
+          AND (CAST(:estado AS string) IS NULL OR es.key = :estado)
         """)
-    Page<TratamientoDTO> findAllProjected(Pageable pageable);
+    Page<TratamientoDTO> findAllProjected(@Param("paciente") String paciente, @Param("terapeuta") String terapeuta,
+                                           @Param("tipoTerapiaId") Long tipoTerapiaId, @Param("estado") String estado,
+                                           Pageable pageable);
 
     @Query("""
         SELECT new com.therateam.therateam.dto.TratamientoDTO(

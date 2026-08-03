@@ -1,5 +1,6 @@
 package com.therateam.therateam.model;
 
+import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -30,11 +31,26 @@ public class Paciente {
 
     private String notas;
     private Boolean activo;
+
+    /** Cuenta de acceso del paciente (rol PACIENTE) — se crea junto con el paciente, ver PacienteService. */
+    @OneToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "usuario_id")
+    private Usuario usuario;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    @Column(name = "idusuario_creacion", updatable = false)
+    private Long usuarioCreacionId;
+    @Column(name = "idusuario_modificacion")
+    private Long usuarioModificacionId;
+
     @PrePersist
-    void onCreate() { createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now(); if (activo == null) activo = true; }
+    void onCreate() {
+        createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now(); if (activo == null) activo = true;
+        usuarioCreacionId = SecurityUtils.currentUserId();
+        usuarioModificacionId = usuarioCreacionId;
+    }
     @PreUpdate
-    void onUpdate() { updatedAt = LocalDateTime.now(); }
+    void onUpdate() { updatedAt = LocalDateTime.now(); usuarioModificacionId = SecurityUtils.currentUserId(); }
 }

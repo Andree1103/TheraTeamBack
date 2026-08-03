@@ -31,8 +31,9 @@ public class TerapeutaService {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional(readOnly = true)
-    public Page<TerapeutaDTO> findAllPaged(Pageable pageable) {
-        Page<TerapeutaDTO> page = repository.findAllProjected(pageable);
+    public Page<TerapeutaDTO> findAllPaged(Pageable pageable, String nombre, String cmp, Long areaId, Boolean activo) {
+        Page<TerapeutaDTO> page = repository.findAllProjected(
+                blankToNull(nombre), blankToNull(cmp), areaId, activo, pageable);
 
         page.getContent().forEach(dto -> {
             if (dto.getTipoTerapeuta() != null && dto.getTipoTerapeuta().getId() == null) dto.setTipoTerapeuta(null);
@@ -53,6 +54,10 @@ public class TerapeutaService {
         }
 
         return page;
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     public List<Terapeuta> findAll() {
@@ -103,9 +108,13 @@ public class TerapeutaService {
             usuario.setPasswordHash(passwordEncoder.encode(req.getPassword()));
             usuario.setRol(rolTerapeuta);
             usuario.setActivo(true);
+            usuario.setCitasSoloPropias(false);
+            usuario.setCitasPuedeCrear(true);
 
             if (req.getSedeId() != null) {
                 sedeRepository.findById(req.getSedeId()).ifPresent(usuario::setSede);
+            } else {
+                sedeRepository.findFirstByActivoTrueOrderByIdAsc().ifPresent(usuario::setSede);
             }
 
             usuario = usuarioRepository.save(usuario);

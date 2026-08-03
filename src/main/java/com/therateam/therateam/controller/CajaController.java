@@ -1,5 +1,7 @@
 package com.therateam.therateam.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.therateam.therateam.dto.CajaResumenDTO;
 import com.therateam.therateam.dto.CerrarCajaRequest;
 import com.therateam.therateam.model.CierreCaja;
@@ -24,6 +26,7 @@ public class CajaController {
         return service.resumenDia(fecha);
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CAJA_CREAR')")
     @PostMapping("/cerrar")
     public CajaResumenDTO cerrar(@RequestBody CerrarCajaRequest req) {
         return service.cerrarDia(req);

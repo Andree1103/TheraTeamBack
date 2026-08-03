@@ -1,5 +1,7 @@
 package com.therateam.therateam.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.therateam.therateam.model.TipoTerapia;
 import com.therateam.therateam.service.TipoTerapiaService;
 import lombok.RequiredArgsConstructor;
@@ -28,11 +30,13 @@ public class TipoTerapiaController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CONFIGURACIONES_CREAR')")
     @PostMapping
     public ResponseEntity<TipoTerapia> create(@RequestBody TipoTerapia tipoTerapia) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(tipoTerapia));
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CONFIGURACIONES_EDITAR')")
     @PutMapping("/{id}")
     public ResponseEntity<TipoTerapia> update(@PathVariable Long id, @RequestBody TipoTerapia tipoTerapia) {
         return service.update(id, tipoTerapia)
@@ -40,6 +44,7 @@ public class TipoTerapiaController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CONFIGURACIONES_ELIMINAR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         return service.delete(id)

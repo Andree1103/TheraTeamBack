@@ -1,5 +1,7 @@
 package com.therateam.therateam.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.therateam.therateam.dto.AtencionClinicaRequest;
 import com.therateam.therateam.model.AtencionClinica;
 import com.therateam.therateam.service.AtencionClinicaService;
@@ -34,16 +36,19 @@ public class AtencionClinicaController {
      * Registra la atención de una cita:
      * guarda atencion_clinica + métricas, actualiza sesion y tratamiento.
      */
+    @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR')")
     @PostMapping
     public ResponseEntity<AtencionClinica> registrar(@RequestBody AtencionClinicaRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.registrar(req));
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CITAS_EDITAR')")
     @PutMapping("/{id}")
     public ResponseEntity<AtencionClinica> update(@PathVariable Long id, @RequestBody AtencionClinica atencion) {
         return service.update(id, atencion).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasAuthority('MODULO_CITAS_ELIMINAR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();

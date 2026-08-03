@@ -1,5 +1,7 @@
 package com.therateam.therateam.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.therateam.therateam.model.PagoSesion;
 import com.therateam.therateam.service.PagoSesionService;
 import lombok.RequiredArgsConstructor;
@@ -34,11 +36,13 @@ public class PagoSesionController {
         return service.findBySesion(sesionId);
     }
 
+    @PreAuthorize("hasAuthority('MODULO_PAGOS_CREAR')")
     @PostMapping
     public ResponseEntity<PagoSesion> create(@RequestBody PagoSesion pagoSesion) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(pagoSesion));
     }
 
+    @PreAuthorize("hasAuthority('MODULO_PAGOS_ELIMINAR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();

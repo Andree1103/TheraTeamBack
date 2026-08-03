@@ -1,5 +1,6 @@
 package com.therateam.therateam.model;
 
+import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -30,6 +31,11 @@ public class CierreCaja {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    @Column(name = "idusuario_creacion", updatable = false)
+    private Long usuarioCreacionId;
+    @Column(name = "idusuario_modificacion")
+    private Long usuarioModificacionId;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();
@@ -37,7 +43,9 @@ public class CierreCaja {
         if (saldoInicial == null) saldoInicial = BigDecimal.ZERO;
         if (totalIngresos == null) totalIngresos = BigDecimal.ZERO;
         if (saldoFinal == null) saldoFinal = BigDecimal.ZERO;
+        usuarioCreacionId = SecurityUtils.currentUserId();
+        usuarioModificacionId = usuarioCreacionId;
     }
     @PreUpdate
-    void onUpdate() { updatedAt = LocalDateTime.now(); }
+    void onUpdate() { updatedAt = LocalDateTime.now(); usuarioModificacionId = SecurityUtils.currentUserId(); }
 }

@@ -1,5 +1,7 @@
 package com.therateam.therateam.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.therateam.therateam.model.TerapeutaHorario;
 import com.therateam.therateam.service.TerapeutaHorarioService;
 import lombok.RequiredArgsConstructor;
@@ -29,16 +31,19 @@ public class TerapeutaHorarioController {
         return service.findByTerapeuta(terapeutaId);
     }
 
+    @PreAuthorize("hasAuthority('MODULO_TERAPEUTAS_CREAR')")
     @PostMapping
     public ResponseEntity<TerapeutaHorario> create(@RequestBody TerapeutaHorario horario) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(horario));
     }
 
+    @PreAuthorize("hasAuthority('MODULO_TERAPEUTAS_EDITAR')")
     @PutMapping("/{id}")
     public ResponseEntity<TerapeutaHorario> update(@PathVariable Long id, @RequestBody TerapeutaHorario horario) {
         return service.update(id, horario).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("hasAuthority('MODULO_TERAPEUTAS_ELIMINAR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
