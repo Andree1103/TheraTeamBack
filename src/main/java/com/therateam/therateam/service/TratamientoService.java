@@ -4,6 +4,7 @@ import com.therateam.therateam.dto.SesionDTO;
 import com.therateam.therateam.dto.TratamientoCoberturaDTO;
 import com.therateam.therateam.dto.TratamientoDTO;
 import com.therateam.therateam.model.*;
+import com.therateam.therateam.repository.PagoRepository;
 import com.therateam.therateam.repository.SesionRepository;
 import com.therateam.therateam.repository.TratamientoRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class TratamientoService {
 
     private final TratamientoRepository repository;
     private final SesionRepository sesionRepository;
+    private final PagoRepository pagoRepository;
 
     @Transactional(readOnly = true)
     public Page<TratamientoDTO> findAllPaged(Pageable pageable, String paciente, String terapeuta,
@@ -50,6 +52,12 @@ public class TratamientoService {
     public List<Tratamiento> findByTerapeuta(Long terapeutaId) { return repository.findByTerapeutaId(terapeutaId); }
     public Tratamiento save(Tratamiento t) { return repository.save(t); }
 
+    /**
+     * El formulario de edición solo expone paciente/terapeuta/tipo/estado/sesiones/precio/fecha/notas
+     * — sesionesAtendidas, totalCobrado y saldoAFavor NO vienen en ese request y los maneja la propia
+     * app (al completar sesiones o registrar pagos), así que no se tocan aquí: sobrescribirlos con lo
+     * que traiga (o no traiga) el body los dejaría en null y viola la restricción NOT NULL de la BD.
+     */
     public Optional<Tratamiento> update(Long id, Tratamiento data) {
         return repository.findById(id).map(e -> {
             e.setPaciente(data.getPaciente());
@@ -59,9 +67,6 @@ public class TratamientoService {
             e.setTotalSesiones(data.getTotalSesiones());
             e.setPrecioPorSesion(data.getPrecioPorSesion());
             e.setEstado(data.getEstado());
-            e.setSesionesAtendidas(data.getSesionesAtendidas());
-            e.setTotalCobrado(data.getTotalCobrado());
-            e.setSaldoAFavor(data.getSaldoAFavor());
             e.setFechaInicio(data.getFechaInicio());
             e.setNotas(data.getNotas());
             return repository.save(e);
@@ -70,6 +75,12 @@ public class TratamientoService {
 
     public boolean delete(Long id) {
         if (!repository.existsById(id)) return false;
+        if (!pagoRepository.findByTratamientoId(id).isEmpty()) {
+            throw new IllegalArgumentException("No se puede eliminar: este paquete ya tiene pagos registrados. Elimina primero esos pagos.");
+        }
+        if (!sesionRepository.findByTratamientoId(id).isEmpty()) {
+            throw new IllegalArgumentException("No se puede eliminar: este paquete ya tiene sesiones/citas creadas.");
+        }
         repository.deleteById(id);
         return true;
     }
