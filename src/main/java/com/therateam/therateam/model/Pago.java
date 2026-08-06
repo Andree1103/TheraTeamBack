@@ -2,6 +2,8 @@ package com.therateam.therateam.model;
 
 import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -18,10 +20,12 @@ public class Pago {
     @JoinColumn(name = "tratamiento_id")
     private Tratamiento tratamiento;
 
+    @NotNull(message = "El paciente es obligatorio")
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "paciente_id")
     private Paciente paciente;
 
+    @NotNull(message = "El método de pago es obligatorio")
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "metodo_id")
     private CatMetodoPago metodo;
@@ -30,6 +34,8 @@ public class Pago {
     @JoinColumn(name = "cita_id")
     private Cita cita;
 
+    @NotNull(message = "El monto recibido es obligatorio")
+    @DecimalMin(value = "0.0", inclusive = false, message = "El monto recibido debe ser mayor a 0")
     private BigDecimal montoRecibido;
     private BigDecimal montoAplicado;
     private BigDecimal saldoGenerado;

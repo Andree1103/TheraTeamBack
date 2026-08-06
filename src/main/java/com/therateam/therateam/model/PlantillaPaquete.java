@@ -27,6 +27,15 @@ public class PlantillaPaquete {
     private CatEspecialidad especialidad;
 
     /**
+     * Área a la que pertenece este paquete (ej. "Kids" vs "Física") — permite tener plantillas
+     * con el mismo nombre/sesiones que solo se diferencian por área. Al elegir la plantilla en
+     * "Nuevo paquete" filtra los tipos de terapia y terapeutas disponibles, igual que en Citas.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "area_id")
+    private CatArea area;
+
+    /**
      * Tipo de terapia al que corresponde este paquete — al elegir la plantilla en "Nuevo paquete"
      * (Tratamiento), esto autocompleta el tipo de terapia y, por lo tanto, el área que filtra
      * qué terapeutas pueden atenderlo. Opcional: si queda sin asignar, el usuario lo elige a mano.

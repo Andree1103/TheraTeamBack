@@ -15,8 +15,12 @@ public class CierreCaja {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false)
     private LocalDate fecha;
+
+    /** 1 = turno de mañana (hasta la hora de corte configurada), 2 = turno de tarde/noche. */
+    @Column(nullable = false)
+    private Integer turno = 1;
 
     private BigDecimal saldoInicial;
     private BigDecimal totalIngresos;
@@ -39,6 +43,7 @@ public class CierreCaja {
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();
+        if (turno == null) turno = 1;
         if (egresos == null) egresos = BigDecimal.ZERO;
         if (saldoInicial == null) saldoInicial = BigDecimal.ZERO;
         if (totalIngresos == null) totalIngresos = BigDecimal.ZERO;

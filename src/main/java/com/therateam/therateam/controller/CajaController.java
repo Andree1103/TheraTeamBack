@@ -20,10 +20,11 @@ public class CajaController {
 
     private final CajaService service;
 
-    /** GET /api/caja/resumen?fecha=2026-07-21 */
+    /** GET /api/caja/resumen?fecha=2026-07-21&turno=1 */
     @GetMapping("/resumen")
-    public CajaResumenDTO resumen(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
-        return service.resumenDia(fecha);
+    public CajaResumenDTO resumen(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+                                   @RequestParam(required = false) Integer turno) {
+        return service.resumenDia(fecha, turno);
     }
 
     @PreAuthorize("hasAuthority('MODULO_CAJA_CREAR')")
@@ -37,5 +38,17 @@ public class CajaController {
     public List<CierreCaja> historial(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
                                        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
         return service.historial(desde, hasta);
+    }
+
+    /** GET /api/caja/hora-corte — hora (HH:mm) que separa el turno 1 del turno 2. */
+    @GetMapping("/hora-corte")
+    public java.util.Map<String, String> horaCorte() {
+        return java.util.Map.of("horaCorte", service.horaCorte().toString());
+    }
+
+    @PreAuthorize("hasAuthority('MODULO_CAJA_EDITAR')")
+    @PutMapping("/hora-corte")
+    public java.util.Map<String, String> actualizarHoraCorte(@RequestBody java.util.Map<String, String> body) {
+        return java.util.Map.of("horaCorte", service.actualizarHoraCorte(body.get("horaCorte")));
     }
 }

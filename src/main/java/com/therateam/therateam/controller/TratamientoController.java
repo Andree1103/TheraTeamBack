@@ -7,6 +7,7 @@ import com.therateam.therateam.dto.TratamientoCoberturaDTO;
 import com.therateam.therateam.dto.TratamientoDTO;
 import com.therateam.therateam.model.Tratamiento;
 import com.therateam.therateam.service.TratamientoService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -69,13 +70,13 @@ public class TratamientoController {
 
     @PreAuthorize("hasAuthority('MODULO_PAQUETES_CREAR')")
     @PostMapping
-    public ResponseEntity<Tratamiento> create(@RequestBody Tratamiento t) {
+    public ResponseEntity<Tratamiento> create(@Valid @RequestBody Tratamiento t) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(t));
     }
 
     @PreAuthorize("hasAuthority('MODULO_PAQUETES_EDITAR')")
     @PutMapping("/{id}")
-    public ResponseEntity<Tratamiento> update(@PathVariable Long id, @RequestBody Tratamiento t) {
+    public ResponseEntity<Tratamiento> update(@PathVariable Long id, @Valid @RequestBody Tratamiento t) {
         return service.update(id, t).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 

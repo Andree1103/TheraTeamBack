@@ -20,6 +20,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
     Optional<Usuario> findByEmail(String email);
 
+    Optional<Usuario> findByResetToken(String resetToken);
+
     /** Filtros por campo separado server-side; cualquier parámetro nulo/vacío no restringe. */
     @Query("""
         SELECT u FROM Usuario u

@@ -4,6 +4,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 import com.therateam.therateam.model.Usuario;
 import com.therateam.therateam.service.UsuarioService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -45,13 +46,13 @@ public class UsuarioController {
 
     @PreAuthorize("hasAuthority('MODULO_SEGURIDAD_CREAR')")
     @PostMapping
-    public ResponseEntity<Usuario> create(@RequestBody Usuario usuario) {
+    public ResponseEntity<Usuario> create(@Valid @RequestBody Usuario usuario) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(usuario));
     }
 
     @PreAuthorize("hasAuthority('MODULO_SEGURIDAD_EDITAR')")
     @PutMapping("/{id}")
-    public ResponseEntity<Usuario> update(@PathVariable Long id, @RequestBody Usuario usuario) {
+    public ResponseEntity<Usuario> update(@PathVariable Long id, @Valid @RequestBody Usuario usuario) {
         return service.update(id, usuario)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

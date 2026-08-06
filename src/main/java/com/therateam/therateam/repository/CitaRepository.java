@@ -27,6 +27,17 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             Long terapeutaId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey);
 
     /**
+     * Citas del paciente que se solapan con [fechaInicio, fechaFin) — un paciente no puede estar
+     * en dos sesiones a la vez, sin importar el terapeuta. Mismo patrón que la validación de
+     * disponibilidad del terapeuta, pero del lado del paciente.
+     */
+    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+            Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey, Long excludeId);
+
+    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+            Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey);
+
+    /**
      * Proyección liviana para listados: trae SOLO las columnas de CitaDTO en vez de la entidad
      * completa (que por sus asociaciones EAGER arrastra sesion→tratamiento→paciente/tipoTerapia,
      * terapeuta→usuario/tipoTerapeuta/area/especialidades, etc. — mucho más de lo que se usa).

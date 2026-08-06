@@ -14,6 +14,9 @@ import java.util.List;
 public class CajaResumenDTO {
 
     private LocalDate fecha;
+    private Integer turno;
+    /** Hora de corte configurada (HH:mm) usada para separar el turno 1 del turno 2 este día. */
+    private String horaCorte;
     private BigDecimal saldoInicial;
     private List<IngresoMetodo> ingresosPorMetodo;
     private BigDecimal totalIngresos;

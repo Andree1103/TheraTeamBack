@@ -8,6 +8,7 @@ import com.therateam.therateam.dto.CitaRapidaRequest;
 import com.therateam.therateam.model.Cita;
 import com.therateam.therateam.service.CitaService;
 import io.jsonwebtoken.Claims;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -78,7 +79,7 @@ public class CitaController {
 
     @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR') and hasAuthority('CITAS_PUEDE_CREAR')")
     @PostMapping
-    public ResponseEntity<Cita> create(@RequestBody Cita cita) {
+    public ResponseEntity<Cita> create(@Valid @RequestBody Cita cita) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(cita));
     }
 
@@ -102,7 +103,7 @@ public class CitaController {
 
     @PreAuthorize("hasAuthority('MODULO_CITAS_EDITAR')")
     @PutMapping("/{id}")
-    public ResponseEntity<Cita> update(@PathVariable Long id, @RequestBody Cita cita) {
+    public ResponseEntity<Cita> update(@PathVariable Long id, @Valid @RequestBody Cita cita) {
         return service.update(id, cita)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

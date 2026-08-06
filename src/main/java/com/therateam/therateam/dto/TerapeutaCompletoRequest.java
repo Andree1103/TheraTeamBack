@@ -1,5 +1,6 @@
 package com.therateam.therateam.dto;
 
+import jakarta.validation.constraints.AssertTrue;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -31,4 +32,16 @@ public class TerapeutaCompletoRequest {
     private String horarioDescripcion;
     private Boolean activo;
     private List<Long> especialidadIds;
+
+    /** "existente" necesita usuarioId; "nuevo" necesita al menos nombre/apellido/email. */
+    @AssertTrue(message = "Faltan datos: si modo es 'existente' se requiere usuarioId, si es 'nuevo' se requieren nombre, apellido y email")
+    public boolean isDatosSegunModoValidos() {
+        if ("existente".equals(modo)) return usuarioId != null;
+        if ("nuevo".equals(modo)) {
+            return notBlank(nombre) && notBlank(apellido) && notBlank(email);
+        }
+        return false;
+    }
+
+    private static boolean notBlank(String s) { return s != null && !s.isBlank(); }
 }

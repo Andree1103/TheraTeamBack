@@ -6,6 +6,7 @@ import com.therateam.therateam.dto.TerapeutaCompletoRequest;
 import com.therateam.therateam.dto.TerapeutaDTO;
 import com.therateam.therateam.model.Terapeuta;
 import com.therateam.therateam.service.TerapeutaService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -46,7 +47,7 @@ public class TerapeutaController {
 
     @PreAuthorize("hasAuthority('MODULO_TERAPEUTAS_CREAR')")
     @PostMapping("/completo")
-    public ResponseEntity<Terapeuta> createCompleto(@RequestBody TerapeutaCompletoRequest req) {
+    public ResponseEntity<Terapeuta> createCompleto(@Valid @RequestBody TerapeutaCompletoRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.crearCompleto(req));
     }
 
@@ -60,7 +61,7 @@ public class TerapeutaController {
 
     @PreAuthorize("hasAuthority('MODULO_TERAPEUTAS_EDITAR')")
     @PutMapping("/{id}/completo")
-    public ResponseEntity<Terapeuta> updateCompleto(@PathVariable Long id, @RequestBody TerapeutaCompletoRequest req) {
+    public ResponseEntity<Terapeuta> updateCompleto(@PathVariable Long id, @Valid @RequestBody TerapeutaCompletoRequest req) {
         return service.actualizarCompleto(id, req)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

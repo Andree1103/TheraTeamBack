@@ -3,6 +3,7 @@ package com.therateam.therateam.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -16,6 +17,7 @@ public class Cita {
     private Long id;
 
     /** Paciente directo de la cita — ya NO depende de pasar por sesión→tratamiento. */
+    @NotNull(message = "El paciente es obligatorio")
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "paciente_id")
     private Paciente paciente;
@@ -44,18 +46,23 @@ public class Cita {
     @JoinColumn(name = "sesion_id")
     private Sesion sesion;
 
+    @NotNull(message = "El terapeuta es obligatorio")
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "terapeuta_id")
     private Terapeuta terapeuta;
 
+    @NotNull(message = "La modalidad es obligatoria")
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "modalidad_id")
     private CatModalidad modalidad;
 
+    @NotNull(message = "La fecha de inicio es obligatoria")
     private LocalDateTime fechaInicio;
+    @NotNull(message = "La fecha de fin es obligatoria")
     private LocalDateTime fechaFin;
     private Integer duracionMinutos;
 
+    @NotNull(message = "El estado es obligatorio")
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "estado_id")
     private CatEstadoCita estado;

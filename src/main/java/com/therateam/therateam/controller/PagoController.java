@@ -5,6 +5,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import com.therateam.therateam.dto.PagoDTO;
 import com.therateam.therateam.model.Pago;
 import com.therateam.therateam.service.PagoService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -56,7 +57,7 @@ public class PagoController {
 
     @PreAuthorize("hasAuthority('MODULO_PAGOS_CREAR')")
     @PostMapping
-    public ResponseEntity<Pago> create(@RequestBody Pago p) {
+    public ResponseEntity<Pago> create(@Valid @RequestBody Pago p) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(p));
     }
 

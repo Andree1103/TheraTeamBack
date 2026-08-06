@@ -89,6 +89,7 @@ public class CitaService {
                         ? e.getSesion().getTratamiento().getTipoTerapia() : null);
             Integer maxPacientes = tipo != null ? tipo.getMaxPacientes() : null;
             validarDisponibilidad(e.getTerapeuta(), e.getFechaInicio(), e.getFechaFin(), maxPacientes, id);
+            validarPacienteDisponible(e.getPaciente(), e.getFechaInicio(), e.getFechaFin(), id);
 
             return citaRepository.save(e);
         });
@@ -177,6 +178,7 @@ public class CitaService {
                 ? tratamiento.getTipoTerapia() : tipoTerapiaDirecta;
         validarDisponibilidad(terapeuta, req.getFechaInicio(), req.getFechaFin(),
                 tipoParaCapacidad != null ? tipoParaCapacidad.getMaxPacientes() : null, null);
+        validarPacienteDisponible(paciente, req.getFechaInicio(), req.getFechaFin(), null);
 
         CatEstadoCita estadoCita = null;
         if (req.getEstadoCitaId() != null) {
@@ -363,6 +365,7 @@ public class CitaService {
                                            String tipoRecurrencia) {
         validarDisponibilidad(terapeuta, fechaInicio, fechaFin,
                 tipoTerapia != null ? tipoTerapia.getMaxPacientes() : null, null);
+        validarPacienteDisponible(paciente, fechaInicio, fechaFin, null);
 
         Tratamiento tratamiento = null;
         Sesion sesion = null;
@@ -445,6 +448,23 @@ public class CitaService {
                         terapeuta.getId(), fin, inicio, "CANCELADA");
         if (solapadas.size() >= capacidad) {
             throw new IllegalArgumentException("El terapeuta ya tiene el cupo completo en ese horario.");
+        }
+    }
+
+    /**
+     * Un paciente no puede tener dos citas activas que se solapen en el tiempo — no puede estar
+     * en dos sesiones a la vez, sin importar si son con el mismo terapeuta o con otro distinto.
+     */
+    private void validarPacienteDisponible(Paciente paciente, LocalDateTime inicio, LocalDateTime fin, Long excluirCitaId) {
+        if (paciente == null || paciente.getId() == null || inicio == null || fin == null) return;
+
+        List<Cita> solapadas = excluirCitaId != null
+                ? citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+                        paciente.getId(), fin, inicio, "CANCELADA", excluirCitaId)
+                : citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+                        paciente.getId(), fin, inicio, "CANCELADA");
+        if (!solapadas.isEmpty()) {
+            throw new IllegalArgumentException("El paciente ya tiene otra cita en ese horario — no puede estar en dos sesiones a la vez.");
         }
     }
 

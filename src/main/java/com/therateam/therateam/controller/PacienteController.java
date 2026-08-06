@@ -5,6 +5,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import com.therateam.therateam.model.Paciente;
 import com.therateam.therateam.service.PacienteService;
 import io.jsonwebtoken.Claims;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -60,13 +61,13 @@ public class PacienteController {
 
     @PreAuthorize("hasAuthority('MODULO_PACIENTES_CREAR')")
     @PostMapping
-    public ResponseEntity<Paciente> create(@RequestBody Paciente paciente) {
+    public ResponseEntity<Paciente> create(@Valid @RequestBody Paciente paciente) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.save(paciente));
     }
 
     @PreAuthorize("hasAuthority('MODULO_PACIENTES_EDITAR')")
     @PutMapping("/{id}")
-    public ResponseEntity<Paciente> update(@PathVariable Long id, @RequestBody Paciente paciente) {
+    public ResponseEntity<Paciente> update(@PathVariable Long id, @Valid @RequestBody Paciente paciente) {
         return service.update(id, paciente)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

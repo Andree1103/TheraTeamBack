@@ -2,6 +2,8 @@ package com.therateam.therateam.model;
 
 import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
 import java.time.LocalDate;
@@ -14,10 +16,15 @@ public class Paciente {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank(message = "El nombre es obligatorio")
     private String nombre;
+    @NotBlank(message = "El apellido es obligatorio")
     private String apellido;
+    @NotBlank(message = "El DNI es obligatorio")
     private String dni;
     private String telefono;
+    @NotBlank(message = "El correo es obligatorio")
+    @Email(message = "El correo no tiene un formato válido")
     private String correo;
     private LocalDate fechaNacimiento;
 

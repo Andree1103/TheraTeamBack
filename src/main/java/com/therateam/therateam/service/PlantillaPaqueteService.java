@@ -28,6 +28,7 @@ public class PlantillaPaqueteService {
             existing.setNombre(data.getNombre());
             existing.setCategoria(data.getCategoria());
             existing.setEspecialidad(data.getEspecialidad());
+            existing.setArea(data.getArea());
             existing.setTipoTerapia(data.getTipoTerapia());
             existing.setTotalSesiones(data.getTotalSesiones());
             existing.setPrecioTotal(data.getPrecioTotal());
