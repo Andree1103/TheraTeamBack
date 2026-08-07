@@ -73,6 +73,11 @@ public class CitaService {
 
     public Optional<Cita> update(Long id, Cita data) {
         return citaRepository.findById(id).map(e -> {
+            Long terapeutaOriginalId = e.getTerapeuta() != null ? e.getTerapeuta().getId() : null;
+            LocalDateTime inicioOriginal = e.getFechaInicio();
+            LocalDateTime finOriginal = e.getFechaFin();
+
+            if (data.getPaciente() != null) e.setPaciente(data.getPaciente());
             e.setTerapeuta(data.getTerapeuta());
             e.setModalidad(data.getModalidad());
             e.setFechaInicio(data.getFechaInicio());
@@ -88,7 +93,18 @@ public class CitaService {
                     : (e.getSesion() != null && e.getSesion().getTratamiento() != null
                         ? e.getSesion().getTratamiento().getTipoTerapia() : null);
             Integer maxPacientes = tipo != null ? tipo.getMaxPacientes() : null;
-            validarDisponibilidad(e.getTerapeuta(), e.getFechaInicio(), e.getFechaFin(), maxPacientes, id);
+
+            // Si ni el terapeuta ni el horario cambiaron, no repetir la validación de disponibilidad:
+            // de lo contrario, una cita antigua cuyo horario original ya no calza con el horario
+            // ACTUAL del terapeuta (porque se lo cambiaron después de agendarla) quedaría imposible
+            // de editar para siempre, incluso para cambios que no tocan fecha/hora/terapeuta.
+            Long terapeutaNuevoId = e.getTerapeuta() != null ? e.getTerapeuta().getId() : null;
+            boolean sinCambioDeHorario = java.util.Objects.equals(terapeutaOriginalId, terapeutaNuevoId)
+                    && java.util.Objects.equals(inicioOriginal, e.getFechaInicio())
+                    && java.util.Objects.equals(finOriginal, e.getFechaFin());
+            if (!sinCambioDeHorario) {
+                validarDisponibilidad(e.getTerapeuta(), e.getFechaInicio(), e.getFechaFin(), maxPacientes, id);
+            }
             validarPacienteDisponible(e.getPaciente(), e.getFechaInicio(), e.getFechaFin(), id);
 
             return citaRepository.save(e);
