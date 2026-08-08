@@ -3,6 +3,7 @@ package com.therateam.therateam.dto;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -34,6 +35,8 @@ public class SesionDTO {
         private String estadoPagoKey;
         private String estadoPagoNombre;
         private String estadoPagoColor;
+        private BigDecimal precio;
+        private BigDecimal montoPagado;
     }
 
     @Data

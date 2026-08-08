@@ -29,7 +29,7 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
             t.montoTotal, t.precioPorSesion, t.totalCobrado, t.saldoAFavor,
-            t.fechaInicio, t.notas
+            t.fechaInicio, t.notas, t.createdAt
         )
         FROM Tratamiento t
         LEFT JOIN t.paciente p
@@ -57,7 +57,7 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
             t.montoTotal, t.precioPorSesion, t.totalCobrado, t.saldoAFavor,
-            t.fechaInicio, t.notas
+            t.fechaInicio, t.notas, t.createdAt
         )
         FROM Tratamiento t
         LEFT JOIN t.paciente p
@@ -78,7 +78,7 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
             t.montoTotal, t.precioPorSesion, t.totalCobrado, t.saldoAFavor,
-            t.fechaInicio, t.notas
+            t.fechaInicio, t.notas, t.createdAt
         )
         FROM Tratamiento t
         LEFT JOIN t.paciente p

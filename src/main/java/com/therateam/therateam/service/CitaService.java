@@ -107,6 +107,23 @@ public class CitaService {
             }
             validarPacienteDisponible(e.getPaciente(), e.getFechaInicio(), e.getFechaFin(), id);
 
+            // No se puede marcar una cita como atendida sin ningún pago registrado — evita que
+            // quede "Asistida" una sesión que nunca se cobró, lo que rompería la cobranza del
+            // paquete o de la cita suelta. Ojo: `e.getEstado()` acá puede ser un objeto "cascarón"
+            // (Jackson solo deserializó el id desde `{"estado":{"id":X}}`), así que su key real se
+            // resuelve por id en vez de confiar en getKey() directo, que vendría null.
+            if (e.getEstado() != null && e.getEstado().getId() != null) {
+                String estadoKey = catEstadoCitaRepository.findById(e.getEstado().getId())
+                        .map(CatEstadoCita::getKey).orElse(null);
+                if ("ASISTIDA".equals(estadoKey)) {
+                    String estadoPagoKey = e.getEstadoPago() != null ? e.getEstadoPago().getKey() : null;
+                    if (estadoPagoKey == null || "SIN_PAGO".equals(estadoPagoKey)) {
+                        throw new IllegalArgumentException(
+                                "No se puede marcar la cita como Asistida sin un pago registrado — registra al menos un abono primero.");
+                    }
+                }
+            }
+
             return citaRepository.save(e);
         });
     }

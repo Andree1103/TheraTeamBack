@@ -5,6 +5,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -44,6 +45,7 @@ public class TratamientoDTO {
 
     private LocalDate fechaInicio;
     private String notas;
+    private LocalDateTime createdAt;
 
     /** Constructor usado por la proyección JPQL (SELECT new ...) — el orden debe calzar con la query. */
     public TratamientoDTO(Long id, String nombre,
@@ -55,7 +57,7 @@ public class TratamientoDTO {
                            Integer totalSesiones, Integer sesionesAtendidas, Integer sesionesPendientes,
                            BigDecimal montoTotal, BigDecimal precioPorSesion,
                            BigDecimal totalCobrado, BigDecimal saldoAFavor,
-                           LocalDate fechaInicio, String notas) {
+                           LocalDate fechaInicio, String notas, LocalDateTime createdAt) {
         this.id = id;
         this.nombre = nombre;
         this.pacienteId = pacienteId;
@@ -79,5 +81,6 @@ public class TratamientoDTO {
         this.saldoAFavor = saldoAFavor;
         this.fechaInicio = fechaInicio;
         this.notas = notas;
+        this.createdAt = createdAt;
     }
 }

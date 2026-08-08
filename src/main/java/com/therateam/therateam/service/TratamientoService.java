@@ -196,6 +196,9 @@ public class TratamientoService {
                 ca.setEstadoPagoColor(cita.getEstadoPago().getColor());
             }
 
+            ca.setPrecio(cita.getPrecio());
+            ca.setMontoPagado(cita.getMontoPagado());
+
             dto.setCitaActiva(ca);
         }
 
