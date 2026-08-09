@@ -88,6 +88,9 @@ public class CitaService {
             e.setNotasPrevias(data.getNotasPrevias());
             e.setRecordatorioEnviado(data.getRecordatorioEnviado());
             if (data.getTipoRecurrencia() != null) e.setTipoRecurrencia(data.getTipoRecurrencia());
+            // Solo el frontend manda este campo cuando el usuario logueado es ADMIN (gate en el
+            // modal de edición) — si no viene, se preserva el precio ya guardado.
+            if (data.getPrecio() != null) e.setPrecio(data.getPrecio());
 
             TipoTerapia tipo = e.getTipoTerapia() != null ? e.getTipoTerapia()
                     : (e.getSesion() != null && e.getSesion().getTratamiento() != null
