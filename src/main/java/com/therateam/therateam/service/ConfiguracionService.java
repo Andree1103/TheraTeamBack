@@ -5,7 +5,9 @@ import com.therateam.therateam.repository.ConfiguracionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -13,6 +15,37 @@ import java.util.Optional;
 public class ConfiguracionService {
 
     private final ConfiguracionRepository repository;
+
+    /**
+     * Claves fijas de "datos del negocio" (sin sede, globales) — la pantalla de Configuración
+     * solo permite editar estas, nunca agregar claves nuevas desde el frontend.
+     */
+    private static final Map<String, String> CLAVES_NEGOCIO = Map.of(
+            "nombre_negocio", "Nombre del negocio/clínica",
+            "telefono",       "Teléfono de contacto",
+            "direccion",      "Dirección del negocio"
+    );
+
+    /** Si alguna clave todavía no existe en la tabla, se devuelve vacía en vez de fallar. */
+    public Map<String, String> obtenerNegocio() {
+        Map<String, String> out = new LinkedHashMap<>();
+        CLAVES_NEGOCIO.keySet().forEach(clave ->
+                out.put(clave, repository.findBySedeIsNullAndClave(clave).map(Configuracion::getValor).orElse("")));
+        return out;
+    }
+
+    /** Upsert de las claves de negocio — crea la fila si no existía, la actualiza si ya existía. */
+    public Map<String, String> actualizarNegocio(Map<String, String> datos) {
+        CLAVES_NEGOCIO.forEach((clave, descripcion) -> {
+            if (!datos.containsKey(clave)) return;
+            Configuracion c = repository.findBySedeIsNullAndClave(clave).orElseGet(Configuracion::new);
+            c.setClave(clave);
+            c.setValor(datos.get(clave));
+            c.setDescripcion(descripcion);
+            repository.save(c);
+        });
+        return obtenerNegocio();
+    }
 
     public List<Configuracion> findAll() { return repository.findAll(); }
 

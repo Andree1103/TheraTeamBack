@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/configuracion")
@@ -17,6 +18,16 @@ import java.util.List;
 public class ConfiguracionController {
 
     private final ConfiguracionService service;
+
+    /** Datos del negocio (nombre, teléfono, dirección) — pantalla de solo edición, nunca de alta. */
+    @GetMapping("/negocio")
+    public Map<String, String> getNegocio() { return service.obtenerNegocio(); }
+
+    @PreAuthorize("hasAuthority('MODULO_CONFIGURACIONES_EDITAR')")
+    @PutMapping("/negocio")
+    public Map<String, String> updateNegocio(@RequestBody Map<String, String> datos) {
+        return service.actualizarNegocio(datos);
+    }
 
     @GetMapping
     public List<Configuracion> getAll() { return service.findAll(); }
