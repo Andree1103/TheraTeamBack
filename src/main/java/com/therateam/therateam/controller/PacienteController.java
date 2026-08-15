@@ -45,6 +45,13 @@ public class PacienteController {
         return service.findAllPaged(pageable, nombre, dni, correo, sedeId, activo, restriccionTerapeutaId(auth));
     }
 
+    /** GET /api/pacientes/adelantos?page=0&size=20&nombre=x — pacientes con saldo a favor. */
+    @GetMapping("/adelantos")
+    public Page<Paciente> getAdelantos(@PageableDefault(size = 20) Pageable pageable,
+                                        @RequestParam(required = false) String nombre) {
+        return service.findConSaldoAFavorPaged(pageable, nombre);
+    }
+
     @GetMapping("/buscar")
     public ResponseEntity<Paciente> buscarPorDni(@RequestParam String dni) {
         return service.findByDni(dni)

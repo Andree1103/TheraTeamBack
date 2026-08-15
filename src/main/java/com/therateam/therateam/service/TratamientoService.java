@@ -120,7 +120,6 @@ public class TratamientoService {
         dto.setMontoTotal(t.getMontoTotal());
         dto.setPrecioPorSesion(t.getPrecioPorSesion());
         dto.setTotalCobrado(t.getTotalCobrado());
-        dto.setSaldoAFavor(t.getSaldoAFavor());
         dto.setFechaInicio(t.getFechaInicio());
         dto.setNotas(t.getNotas());
 
@@ -131,6 +130,8 @@ public class TratamientoService {
             dto.setPacienteApellido(p.getApellido());
             dto.setPacienteDni(p.getDni());
             dto.setPacienteTelefono(p.getTelefono());
+            // El saldo a favor es del paciente, no de este paquete puntual (ver PagoService).
+            dto.setSaldoAFavor(p.getSaldoAFavor());
         }
 
         if (t.getTerapeuta() != null && t.getTerapeuta().getUsuario() != null) {

@@ -29,16 +29,16 @@ public class PagoDTO {
     private LocalDateTime createdAt;
 
     public PagoDTO(Long id,
-                    Long tratamientoId, String tratamientoNombre,
-                    Long pacienteId, String pacienteNombre, String pacienteApellido,
+                    Long tratamientoId, String tratamientoNombre, String terapeutaNombre, String tipoTerapiaNombre,
+                    Long pacienteId, String pacienteNombre, String pacienteApellido, String pacienteDni,
                     Long metodoId, String metodoNombre,
                     BigDecimal montoRecibido, BigDecimal montoAplicado,
                     BigDecimal saldoGenerado, BigDecimal saldoPrevio,
                     String referencia, String notas,
                     LocalDateTime fechaPago, LocalDateTime createdAt) {
         this.id = id;
-        this.tratamiento = new TratamientoInfo(tratamientoId, tratamientoNombre);
-        this.paciente = new PacienteInfo(pacienteId, pacienteNombre, pacienteApellido);
+        this.tratamiento = new TratamientoInfo(tratamientoId, tratamientoNombre, terapeutaNombre, tipoTerapiaNombre);
+        this.paciente = new PacienteInfo(pacienteId, pacienteNombre, pacienteApellido, pacienteDni);
         this.metodo = new MetodoInfo(metodoId, metodoNombre);
         this.montoRecibido = montoRecibido;
         this.montoAplicado = montoAplicado;
@@ -55,8 +55,13 @@ public class PagoDTO {
     public static class TratamientoInfo {
         private Long id;
         private String nombre;
+        private String terapeutaNombre;
+        private String tipoTerapiaNombre;
 
-        public TratamientoInfo(Long id, String nombre) { this.id = id; this.nombre = nombre; }
+        public TratamientoInfo(Long id, String nombre, String terapeutaNombre, String tipoTerapiaNombre) {
+            this.id = id; this.nombre = nombre;
+            this.terapeutaNombre = terapeutaNombre; this.tipoTerapiaNombre = tipoTerapiaNombre;
+        }
     }
 
     @Data
@@ -65,9 +70,10 @@ public class PagoDTO {
         private Long id;
         private String nombre;
         private String apellido;
+        private String dni;
 
-        public PacienteInfo(Long id, String nombre, String apellido) {
-            this.id = id; this.nombre = nombre; this.apellido = apellido;
+        public PacienteInfo(Long id, String nombre, String apellido, String dni) {
+            this.id = id; this.nombre = nombre; this.apellido = apellido; this.dni = dni;
         }
     }
 

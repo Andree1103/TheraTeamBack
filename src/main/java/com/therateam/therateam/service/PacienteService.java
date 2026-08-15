@@ -42,6 +42,12 @@ public class PacienteService {
         return (s == null || s.isBlank()) ? null : s.trim();
     }
 
+    /** Reporte de adelantos: pacientes con saldo a favor disponible. */
+    @Transactional(readOnly = true)
+    public Page<Paciente> findConSaldoAFavorPaged(Pageable pageable, String nombre) {
+        return repository.findConSaldoAFavor(blankToNull(nombre), pageable);
+    }
+
     public Optional<Paciente> findById(Long id) {
         return repository.findById(id);
     }

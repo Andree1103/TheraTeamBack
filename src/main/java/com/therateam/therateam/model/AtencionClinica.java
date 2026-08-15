@@ -1,10 +1,13 @@
 package com.therateam.therateam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "atencion_clinica")
@@ -13,9 +16,24 @@ public class AtencionClinica {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // La cita completa no viaja al front (arrastraría toda su cadena EAGER) — solo se expone el
+    // id plano vía getCitaId(), que es lo único que el listado del paciente necesita para cruzar
+    // esta atención con la cita ya cargada (terapeuta, tipo de terapia, etc.).
+    @JsonIgnore
     @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "cita_id")
     private Cita cita;
+
+    /** Solo lectura: id de la cita, para que el front la cruce con su propio listado de citas. */
+    public Long getCitaId() {
+        return cita != null ? cita.getId() : null;
+    }
+
+    // Convenience de solo lectura para el front — el alta/edición sigue pasando por
+    // AtencionMetricaRepository (ver AtencionClinicaService.registrar), esto no se persiste directo.
+    @JsonIgnoreProperties("atencion")
+    @OneToMany(mappedBy = "atencion", fetch = FetchType.EAGER)
+    private List<AtencionMetrica> metricas;
 
     private LocalDateTime fechaInicioReal;
     private LocalDateTime fechaFinReal;

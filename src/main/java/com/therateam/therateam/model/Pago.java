@@ -34,8 +34,9 @@ public class Pago {
     @JoinColumn(name = "cita_id")
     private Cita cita;
 
+    // 0 es válido: cubrir la deuda solo con el saldo a favor del paciente, sin dinero nuevo.
     @NotNull(message = "El monto recibido es obligatorio")
-    @DecimalMin(value = "0.0", inclusive = false, message = "El monto recibido debe ser mayor a 0")
+    @DecimalMin(value = "0.0", message = "El monto recibido no puede ser negativo")
     private BigDecimal montoRecibido;
     private BigDecimal montoAplicado;
     private BigDecimal saldoGenerado;

@@ -91,6 +91,10 @@ public class Cita {
     @Column(name = "idusuario_modificacion")
     private Long usuarioModificacionId;
 
+    /** Eliminación lógica: "Eliminar" en el front no borra la fila (dinero/historial dependen de
+     *  ella), solo la marca oculta — desaparece de agendas y listados pero queda para auditoría. */
+    private Boolean eliminado = false;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();

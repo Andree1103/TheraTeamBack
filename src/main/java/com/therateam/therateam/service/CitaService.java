@@ -46,18 +46,21 @@ public class CitaService {
     /** `terapeutaIdRestriccion` acota los resultados a un solo terapeuta (citasSoloPropias=true); null = sin restricción. */
     public Page<CitaDTO> findAllPaged(Pageable pageable, Long terapeutaIdRestriccion) {
         if (terapeutaIdRestriccion == null) return citaRepository.findAllProjected(pageable);
-        return citaRepository.findByFiltrosProjected(null, null, null, terapeutaIdRestriccion, pageable);
+        return citaRepository.findByFiltrosProjected(null, null, null, terapeutaIdRestriccion, null, null, null, pageable);
     }
 
-    public Page<CitaDTO> findByFiltrosPaged(LocalDateTime fechaInicio, LocalDateTime fechaFin,
-                                             String terapeuta, Long terapeutaIdRestriccion, Pageable pageable) {
+    public Page<CitaDTO> findByFiltrosPaged(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta,
+                                             Long terapeutaIdRestriccion, String estadoKey, String paciente,
+                                             Long areaId, Pageable pageable) {
         String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
-        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, terapeutaIdRestriccion, pageable);
+        String pacienteFiltro = (paciente == null || paciente.isBlank()) ? null : paciente.toLowerCase();
+        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, terapeutaIdRestriccion,
+                estadoKey, pacienteFiltro, areaId, pageable);
     }
 
     public List<CitaDTO> findByFiltros(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta) {
         String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
-        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, null,
+        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, null, null, null, null,
                 org.springframework.data.domain.Pageable.unpaged()).getContent();
     }
 
@@ -131,10 +134,21 @@ public class CitaService {
         });
     }
 
+    /**
+     * Eliminación lógica: marca la cita como eliminada en vez de borrar la fila. El pago, el
+     * historial y la atención clínica quedan intactos (dinero y auditoría no deben desaparecer
+     * solo porque se borró la cita) — desaparece de agendas y listados porque esas consultas ya
+     * filtran `eliminado = false`. Si la cita era de un paquete, se libera la sesión para que se
+     * pueda volver a programar.
+     */
+    @Transactional
     public boolean delete(Long id) {
-        if (!citaRepository.existsById(id)) return false;
-        citaRepository.deleteById(id);
-        return true;
+        return citaRepository.findById(id).map(c -> {
+            c.setEliminado(true);
+            citaRepository.save(c);
+            sesionRepository.desvincularCitaActiva(id);
+            return true;
+        }).orElse(false);
     }
 
     /**
@@ -478,9 +492,9 @@ public class CitaService {
 
         int capacidad = (maxPacientes != null && maxPacientes > 0) ? maxPacientes : 1;
         List<Cita> solapadas = excluirCitaId != null
-                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
                         terapeuta.getId(), fin, inicio, "CANCELADA", excluirCitaId)
-                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
                         terapeuta.getId(), fin, inicio, "CANCELADA");
         if (solapadas.size() >= capacidad) {
             throw new IllegalArgumentException("El terapeuta ya tiene el cupo completo en ese horario.");
@@ -495,9 +509,9 @@ public class CitaService {
         if (paciente == null || paciente.getId() == null || inicio == null || fin == null) return;
 
         List<Cita> solapadas = excluirCitaId != null
-                ? citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+                ? citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
                         paciente.getId(), fin, inicio, "CANCELADA", excluirCitaId)
-                : citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+                : citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
                         paciente.getId(), fin, inicio, "CANCELADA");
         if (!solapadas.isEmpty()) {
             throw new IllegalArgumentException("El paciente ya tiene otra cita en ese horario — no puede estar en dos sesiones a la vez.");

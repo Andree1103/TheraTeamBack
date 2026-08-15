@@ -56,9 +56,9 @@ public class DisponibilidadService {
         LocalDateTime inicioDia = fecha.atStartOfDay();
         LocalDateTime finDia = fecha.plusDays(1).atStartOfDay();
         List<Cita> citas = excluirCitaId != null
-                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
                         terapeutaId, finDia, inicioDia, ESTADO_CANCELADA, excluirCitaId)
-                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
                         terapeutaId, finDia, inicioDia, ESTADO_CANCELADA);
         for (Cita c : citas) {
             if (c.getFechaInicio() == null || c.getFechaFin() == null) continue;

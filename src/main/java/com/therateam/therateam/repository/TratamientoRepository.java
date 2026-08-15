@@ -19,7 +19,11 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
     Page<Tratamiento> findByTerapeutaId(Long terapeutaId, Pageable pageable);
     List<Tratamiento> findByPacienteIdAndTerapeutaIdAndTipoTerapiaId(Long pacienteId, Long terapeutaId, Long tipoTerapiaId);
 
-    /** Cada parámetro nulo/vacío no restringe — filtros por campo separado (paciente, terapeuta, tipo, estado). */
+    /**
+     * Cada parámetro nulo/vacío no restringe — filtros por campo separado (paciente, terapeuta, tipo, estado).
+     * `saldoAFavor` se lee del PACIENTE, no del paquete — es un crédito suyo, no de este paquete en
+     * particular, así que aplica igual sin importar cuál de sus paquetes se esté mirando.
+     */
     @Query("""
         SELECT new com.therateam.therateam.dto.TratamientoDTO(
             t.id, t.nombre,
@@ -28,7 +32,7 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             tt.key, tt.nombre,
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
-            t.montoTotal, t.precioPorSesion, t.totalCobrado, t.saldoAFavor,
+            t.montoTotal, t.precioPorSesion, t.totalCobrado, p.saldoAFavor,
             t.fechaInicio, t.notas, t.createdAt
         )
         FROM Tratamiento t
@@ -56,7 +60,7 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             tt.key, tt.nombre,
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
-            t.montoTotal, t.precioPorSesion, t.totalCobrado, t.saldoAFavor,
+            t.montoTotal, t.precioPorSesion, t.totalCobrado, p.saldoAFavor,
             t.fechaInicio, t.notas, t.createdAt
         )
         FROM Tratamiento t
@@ -77,7 +81,7 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             tt.key, tt.nombre,
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
-            t.montoTotal, t.precioPorSesion, t.totalCobrado, t.saldoAFavor,
+            t.montoTotal, t.precioPorSesion, t.totalCobrado, p.saldoAFavor,
             t.fechaInicio, t.notas, t.createdAt
         )
         FROM Tratamiento t

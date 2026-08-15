@@ -18,12 +18,13 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
 
     /**
      * Citas del terapeuta que se solapan con [fechaInicio, fechaFin), excluyendo un estado
-     * (ej. CANCELADA) y opcionalmente excluyendo la propia cita (para updates).
+     * (ej. CANCELADA), las eliminadas lógicamente, y opcionalmente excluyendo la propia cita
+     * (para updates) — una cita eliminada no debe seguir bloqueando ese horario.
      */
-    List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+    List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
             Long terapeutaId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey, Long excludeId);
 
-    List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+    List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
             Long terapeutaId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey);
 
     /**
@@ -31,10 +32,10 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
      * en dos sesiones a la vez, sin importar el terapeuta. Mismo patrón que la validación de
      * disponibilidad del terapeuta, pero del lado del paciente.
      */
-    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
             Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey, Long excludeId);
 
-    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
             Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey);
 
     /**
@@ -65,6 +66,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.estado e
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
+        WHERE c.eliminado = false
         """)
     Page<CitaDTO> findAllProjected(Pageable pageable);
 
@@ -86,20 +88,29 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN s.tratamiento t
         LEFT JOIN c.paciente p
         LEFT JOIN c.tipoTerapia tt
+        LEFT JOIN tt.area a
         LEFT JOIN c.terapeuta ter
         LEFT JOIN ter.usuario u
         LEFT JOIN c.estado e
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
-        WHERE (CAST(:fechaInicio AS timestamp) IS NULL OR c.fechaInicio >= :fechaInicio)
+        WHERE c.eliminado = false
+          AND (CAST(:fechaInicio AS timestamp) IS NULL OR c.fechaInicio >= :fechaInicio)
           AND (CAST(:fechaFin AS timestamp) IS NULL OR c.fechaInicio <= :fechaFin)
           AND (CAST(:terapeuta AS string) IS NULL OR LOWER(CONCAT(u.nombre, ' ', u.apellido)) LIKE LOWER(CONCAT('%', CAST(:terapeuta AS string), '%')))
           AND (CAST(:terapeutaId AS long) IS NULL OR ter.id = :terapeutaId)
+          AND (CAST(:estadoKey AS string) IS NULL OR e.key = :estadoKey)
+          AND (CAST(:paciente AS string) IS NULL
+               OR LOWER(CONCAT(p.nombre, ' ', p.apellido)) LIKE LOWER(CONCAT('%', CAST(:paciente AS string), '%')))
+          AND (CAST(:areaId AS long) IS NULL OR a.id = :areaId)
         """)
     Page<CitaDTO> findByFiltrosProjected(@Param("fechaInicio") LocalDateTime fechaInicio,
                                           @Param("fechaFin") LocalDateTime fechaFin,
                                           @Param("terapeuta") String terapeuta,
                                           @Param("terapeutaId") Long terapeutaId,
+                                          @Param("estadoKey") String estadoKey,
+                                          @Param("paciente") String paciente,
+                                          @Param("areaId") Long areaId,
                                           Pageable pageable);
 
     /** Proyección liviana para un solo registro (GET /{id}). */
@@ -154,7 +165,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.estado e
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
-        WHERE p.id = :pacienteId
+        WHERE p.id = :pacienteId AND c.eliminado = false
         ORDER BY c.fechaInicio DESC
         """)
     List<CitaDTO> findByPacienteIdProjected(@Param("pacienteId") Long pacienteId);

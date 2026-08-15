@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -39,6 +40,15 @@ public class Paciente {
     private String notas;
     private Boolean activo;
 
+    /**
+     * Crédito del paciente (no de un paquete puntual): dinero pagado de más contra cualquier
+     * paquete o cita suya que todavía no se ha aplicado a nada — se descuenta automáticamente
+     * en el próximo pago que se le registre, sea de un paquete nuevo, uno existente, o una cita
+     * suelta. Ver PagoService.
+     */
+    @Column(name = "saldo_a_favor")
+    private BigDecimal saldoAFavor;
+
     /** Cuenta de acceso del paciente (rol PACIENTE) — se crea junto con el paciente, ver PacienteService. */
     @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "usuario_id")
@@ -55,6 +65,7 @@ public class Paciente {
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now(); if (activo == null) activo = true;
+        if (saldoAFavor == null) saldoAFavor = BigDecimal.ZERO;
         usuarioCreacionId = SecurityUtils.currentUserId();
         usuarioModificacionId = usuarioCreacionId;
     }

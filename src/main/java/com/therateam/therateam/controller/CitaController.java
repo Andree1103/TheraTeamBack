@@ -48,16 +48,23 @@ public class CitaController {
         return service.findAllPaged(pageable, restriccionTerapeutaId(auth));
     }
 
-    /** GET /api/citas/filtro?fechaInicio=...&fechaFin=...&terapeuta=Ana&page=0&size=50 */
+    /**
+     * GET /api/citas/filtro?fechaInicio=...&fechaFin=...&terapeuta=Ana&estadoKey=ASISTIDA&paciente=Juan&areaId=1&page=0&size=50
+     * `estadoKey`/`paciente`/`areaId` los usa sobre todo el módulo de Atenciones (citas ASISTIDA), pero sirven para cualquier filtro combinado.
+     */
     @GetMapping("/filtro")
     public Page<CitaDTO> getByFiltros(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin,
             @RequestParam(required = false) String terapeuta,
+            @RequestParam(required = false) String estadoKey,
+            @RequestParam(required = false) String paciente,
+            @RequestParam(required = false) Long areaId,
             @PageableDefault(size = 50) Pageable pageable,
             Authentication auth
     ) {
-        return service.findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, restriccionTerapeutaId(auth), pageable);
+        return service.findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, restriccionTerapeutaId(auth),
+                estadoKey, paciente, areaId, pageable);
     }
 
     @GetMapping("/{id}")

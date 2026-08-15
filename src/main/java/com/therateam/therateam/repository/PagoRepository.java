@@ -28,19 +28,23 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
 
     /**
      * Proyección liviana para listados: evita la cadena EAGER completa de Pago.tratamiento
-     * (Terapeuta->Usuario/TipoTerapeuta/Area/especialidades, TipoTerapia->Area, etc.)
+     * (Terapeuta->Usuario/TipoTerapeuta/Area/especialidades, TipoTerapia->Area, etc.) — pero sí
+     * trae terapeuta/tipo/DNI planos, que la tabla de Pagos sí necesita mostrar.
      */
     @Query("""
         SELECT new com.therateam.therateam.dto.PagoDTO(
             pg.id,
-            t.id, t.nombre,
-            p.id, p.nombre, p.apellido,
+            t.id, t.nombre, CONCAT(u.nombre, ' ', u.apellido), tt.nombre,
+            p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
             pg.referencia, pg.notas, pg.fechaPago, pg.createdAt
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
+        LEFT JOIN t.terapeuta ter
+        LEFT JOIN ter.usuario u
+        LEFT JOIN t.tipoTerapia tt
         LEFT JOIN pg.paciente p
         LEFT JOIN pg.metodo m
         ORDER BY pg.fechaPago DESC
@@ -54,14 +58,17 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     @Query("""
         SELECT new com.therateam.therateam.dto.PagoDTO(
             pg.id,
-            t.id, t.nombre,
-            p.id, p.nombre, p.apellido,
+            t.id, t.nombre, CONCAT(u.nombre, ' ', u.apellido), tt.nombre,
+            p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
             pg.referencia, pg.notas, pg.fechaPago, pg.createdAt
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
+        LEFT JOIN t.terapeuta ter
+        LEFT JOIN ter.usuario u
+        LEFT JOIN t.tipoTerapia tt
         LEFT JOIN pg.paciente p
         LEFT JOIN pg.metodo m
         WHERE (CAST(:paciente AS string) IS NULL
@@ -89,14 +96,17 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     @Query("""
         SELECT new com.therateam.therateam.dto.PagoDTO(
             pg.id,
-            t.id, t.nombre,
-            p.id, p.nombre, p.apellido,
+            t.id, t.nombre, CONCAT(u.nombre, ' ', u.apellido), tt.nombre,
+            p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
             pg.referencia, pg.notas, pg.fechaPago, pg.createdAt
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
+        LEFT JOIN t.terapeuta ter
+        LEFT JOIN ter.usuario u
+        LEFT JOIN t.tipoTerapia tt
         LEFT JOIN pg.paciente p
         LEFT JOIN pg.metodo m
         WHERE p.id = :pacienteId
@@ -107,14 +117,17 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     @Query("""
         SELECT new com.therateam.therateam.dto.PagoDTO(
             pg.id,
-            t.id, t.nombre,
-            p.id, p.nombre, p.apellido,
+            t.id, t.nombre, CONCAT(u.nombre, ' ', u.apellido), tt.nombre,
+            p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
             pg.referencia, pg.notas, pg.fechaPago, pg.createdAt
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
+        LEFT JOIN t.terapeuta ter
+        LEFT JOIN ter.usuario u
+        LEFT JOIN t.tipoTerapia tt
         LEFT JOIN pg.paciente p
         LEFT JOIN pg.metodo m
         WHERE t.id = :tratamientoId

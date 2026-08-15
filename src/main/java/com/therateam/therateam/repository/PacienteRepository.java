@@ -35,4 +35,14 @@ public interface PacienteRepository extends JpaRepository<Paciente, Long> {
                                 @Param("correo") String correo, @Param("sedeId") Long sedeId,
                                 @Param("activo") Boolean activo,
                                 @Param("terapeutaId") Long terapeutaId, Pageable pageable);
+
+    /** Reporte de adelantos: pacientes con crédito disponible (saldo a favor > 0) — `nombre` nulo/vacío no restringe. */
+    @Query("""
+        SELECT p FROM Paciente p
+        WHERE p.saldoAFavor > 0
+          AND (CAST(:nombre AS string) IS NULL
+               OR LOWER(CONCAT(p.nombre, ' ', p.apellido)) LIKE LOWER(CONCAT('%', CAST(:nombre AS string), '%')))
+        ORDER BY p.saldoAFavor DESC
+        """)
+    Page<Paciente> findConSaldoAFavor(@Param("nombre") String nombre, Pageable pageable);
 }
