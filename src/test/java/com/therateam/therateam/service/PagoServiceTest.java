@@ -2,11 +2,13 @@ package com.therateam.therateam.service;
 
 import com.therateam.therateam.model.CatEstadoPagoCita;
 import com.therateam.therateam.model.Cita;
+import com.therateam.therateam.model.Paciente;
 import com.therateam.therateam.model.Pago;
 import com.therateam.therateam.model.Sesion;
 import com.therateam.therateam.model.Tratamiento;
 import com.therateam.therateam.repository.CatEstadoPagoCitaRepository;
 import com.therateam.therateam.repository.CitaRepository;
+import com.therateam.therateam.repository.PacienteRepository;
 import com.therateam.therateam.repository.PagoRepository;
 import com.therateam.therateam.repository.SesionRepository;
 import com.therateam.therateam.repository.TratamientoRepository;
@@ -28,6 +30,9 @@ import static org.mockito.Mockito.when;
 /**
  * Cubre el cálculo de saldo a favor / monto aplicado en PagoService.save() — es dinero real,
  * así que un error de redondeo o de signo aquí se traduce directo en una cuenta mal cobrada.
+ * El saldo a favor vive en el PACIENTE (no en el paquete): cada test arma un Paciente con su
+ * saldo previo y verifica que el saldo final quede ahí, sin importar si el pago fue contra un
+ * paquete, una cita suelta, o ninguno de los dos ("adelanto general").
  */
 @ExtendWith(MockitoExtension.class)
 class PagoServiceTest {
@@ -37,23 +42,39 @@ class PagoServiceTest {
     @Mock private CatEstadoPagoCitaRepository catEstadoPagoCitaRepository;
     @Mock private TratamientoRepository tratamientoRepository;
     @Mock private SesionRepository sesionRepository;
+    @Mock private PacienteRepository pacienteRepository;
 
     private PagoService service;
 
     @BeforeEach
     void setUp() {
-        service = new PagoService(repository, citaRepository, catEstadoPagoCitaRepository, tratamientoRepository, sesionRepository);
+        service = new PagoService(repository, citaRepository, catEstadoPagoCitaRepository,
+                tratamientoRepository, sesionRepository, pacienteRepository);
         lenient().when(repository.save(any(Pago.class))).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(pacienteRepository.save(any(Paciente.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
-    private Tratamiento tratamiento(BigDecimal precioPorSesion, int totalSesiones, BigDecimal totalCobrado, BigDecimal saldoAFavor) {
+    private Paciente paciente(BigDecimal saldoAFavor) {
+        Paciente p = new Paciente();
+        p.setId(1L);
+        p.setSaldoAFavor(saldoAFavor);
+        return p;
+    }
+
+    private Tratamiento tratamiento(BigDecimal precioPorSesion, int totalSesiones, BigDecimal totalCobrado) {
         Tratamiento t = new Tratamiento();
         t.setId(1L);
         t.setPrecioPorSesion(precioPorSesion);
         t.setTotalSesiones(totalSesiones);
         t.setTotalCobrado(totalCobrado);
-        t.setSaldoAFavor(saldoAFavor);
         return t;
+    }
+
+    /** Todo pago requiere paciente (campo obligatorio de Pago) — este helper deja el mock listo. */
+    private Paciente stubPaciente(BigDecimal saldoAFavor) {
+        Paciente p = paciente(saldoAFavor);
+        when(pacienteRepository.findById(1L)).thenReturn(Optional.of(p));
+        return p;
     }
 
     private Pago pagoParaTratamiento(Long tratamientoId, BigDecimal montoRecibido) {
@@ -61,15 +82,19 @@ class PagoServiceTest {
         Tratamiento ref = new Tratamiento();
         ref.setId(tratamientoId);
         p.setTratamiento(ref);
+        Paciente pacRef = new Paciente();
+        pacRef.setId(1L);
+        p.setPaciente(pacRef);
         p.setMontoRecibido(montoRecibido);
         return p;
     }
 
     @Test
     void save_pagoParcialDePaquete_aplicaTodoYNoGeneraSaldo() {
-        // Paquete de 10 sesiones a 50 c/u = 500 total, nada cobrado aún.
-        Tratamiento t = tratamiento(new BigDecimal("50"), 10, BigDecimal.ZERO, BigDecimal.ZERO);
+        // Paquete de 10 sesiones a 50 c/u = 500 total, nada cobrado aún. Paciente sin saldo previo.
+        Tratamiento t = tratamiento(new BigDecimal("50"), 10, BigDecimal.ZERO);
         when(tratamientoRepository.findById(1L)).thenReturn(Optional.of(t));
+        Paciente paciente = stubPaciente(BigDecimal.ZERO);
 
         Pago pago = pagoParaTratamiento(1L, new BigDecimal("200"));
         Pago resultado = service.save(pago);
@@ -77,13 +102,15 @@ class PagoServiceTest {
         assertThat(resultado.getMontoAplicado()).isEqualByComparingTo("200");
         assertThat(resultado.getSaldoGenerado()).isEqualByComparingTo("0");
         assertThat(t.getTotalCobrado()).isEqualByComparingTo("200");
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("0");
     }
 
     @Test
     void save_pagoQueSuperaLaDeuda_generaSaldoAFavor() {
-        // Deuda pendiente = 500 - 450 = 50, pero se paga 100 -> 50 aplicado, 50 de saldo a favor.
-        Tratamiento t = tratamiento(new BigDecimal("50"), 10, new BigDecimal("450"), BigDecimal.ZERO);
+        // Deuda pendiente = 500 - 450 = 50, pero se paga 100 -> 50 aplicado, 50 de saldo a favor del paciente.
+        Tratamiento t = tratamiento(new BigDecimal("50"), 10, new BigDecimal("450"));
         when(tratamientoRepository.findById(1L)).thenReturn(Optional.of(t));
+        Paciente paciente = stubPaciente(BigDecimal.ZERO);
 
         Pago pago = pagoParaTratamiento(1L, new BigDecimal("100"));
         Pago resultado = service.save(pago);
@@ -91,14 +118,16 @@ class PagoServiceTest {
         assertThat(resultado.getMontoAplicado()).isEqualByComparingTo("50");
         assertThat(resultado.getSaldoGenerado()).isEqualByComparingTo("50");
         assertThat(t.getTotalCobrado()).isEqualByComparingTo("500");
-        assertThat(t.getSaldoAFavor()).isEqualByComparingTo("50");
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("50");
     }
 
     @Test
     void save_usaElSaldoAFavorArrastradoAntesQueElNuevoPago() {
-        // Ya tenía 30 de saldo a favor; paga 20 más -> disponible 50, deuda pendiente 500-480=20.
-        Tratamiento t = tratamiento(new BigDecimal("50"), 10, new BigDecimal("480"), new BigDecimal("30"));
+        // El paciente ya tenía 30 de saldo a favor (de cualquier paquete/cita anterior); paga 20
+        // más -> disponible 50, deuda pendiente 500-480=20.
+        Tratamiento t = tratamiento(new BigDecimal("50"), 10, new BigDecimal("480"));
         when(tratamientoRepository.findById(1L)).thenReturn(Optional.of(t));
+        Paciente paciente = stubPaciente(new BigDecimal("30"));
 
         Pago pago = pagoParaTratamiento(1L, new BigDecimal("20"));
         Pago resultado = service.save(pago);
@@ -107,6 +136,7 @@ class PagoServiceTest {
         assertThat(resultado.getMontoAplicado()).isEqualByComparingTo("20");
         assertThat(resultado.getSaldoGenerado()).isEqualByComparingTo("30");
         assertThat(t.getTotalCobrado()).isEqualByComparingTo("500");
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("30");
     }
 
     @Test
@@ -116,6 +146,7 @@ class PagoServiceTest {
         cita.setPrecio(new BigDecimal("100"));
         cita.setMontoPagado(BigDecimal.ZERO);
         when(citaRepository.findById(5L)).thenReturn(Optional.of(cita));
+        stubPaciente(BigDecimal.ZERO);
         CatEstadoPagoCita parcial = new CatEstadoPagoCita();
         parcial.setKey("PARCIAL");
         when(catEstadoPagoCitaRepository.findByKey("PARCIAL")).thenReturn(Optional.of(parcial));
@@ -124,6 +155,8 @@ class PagoServiceTest {
         Cita ref = new Cita();
         ref.setId(5L);
         pago.setCita(ref);
+        Paciente pacRef = new Paciente(); pacRef.setId(1L);
+        pago.setPaciente(pacRef);
         pago.setMontoRecibido(new BigDecimal("40"));
 
         Pago resultado = service.save(pago);
@@ -131,6 +164,51 @@ class PagoServiceTest {
         assertThat(resultado.getMontoAplicado()).isEqualByComparingTo("40");
         assertThat(cita.getMontoPagado()).isEqualByComparingTo("40");
         assertThat(cita.getEstadoPago().getKey()).isEqualTo("PARCIAL");
+    }
+
+    /** Ni paquete ni cita con precio propio: todo el dinero queda como saldo a favor del paciente. */
+    @Test
+    void save_adelantoGeneralSinCitaNiPaquete_todoQuedaComoSaldoAFavor() {
+        Paciente paciente = stubPaciente(new BigDecimal("10"));
+
+        Pago pago = new Pago();
+        Paciente pacRef = new Paciente(); pacRef.setId(1L);
+        pago.setPaciente(pacRef);
+        pago.setMontoRecibido(new BigDecimal("15"));
+
+        Pago resultado = service.save(pago);
+
+        assertThat(resultado.getMontoAplicado()).isEqualByComparingTo("0");
+        assertThat(resultado.getSaldoGenerado()).isEqualByComparingTo("25");
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("25");
+    }
+
+    /** montoRecibido=0 es válido: cubre la deuda solo con el saldo a favor, sin dinero nuevo. */
+    @Test
+    void save_soloConSaldoAFavorSinDineroNuevo_puedeDejarLaCitaParcial() {
+        Cita cita = new Cita();
+        cita.setId(9L);
+        cita.setPrecio(new BigDecimal("60"));
+        cita.setMontoPagado(BigDecimal.ZERO);
+        when(citaRepository.findById(9L)).thenReturn(Optional.of(cita));
+        Paciente paciente = stubPaciente(new BigDecimal("20"));
+        CatEstadoPagoCita parcial = new CatEstadoPagoCita();
+        parcial.setKey("PARCIAL");
+        when(catEstadoPagoCitaRepository.findByKey("PARCIAL")).thenReturn(Optional.of(parcial));
+
+        Pago pago = new Pago();
+        Cita ref = new Cita(); ref.setId(9L);
+        pago.setCita(ref);
+        Paciente pacRef = new Paciente(); pacRef.setId(1L);
+        pago.setPaciente(pacRef);
+        pago.setMontoRecibido(BigDecimal.ZERO);
+
+        Pago resultado = service.save(pago);
+
+        assertThat(resultado.getMontoAplicado()).isEqualByComparingTo("20");
+        assertThat(cita.getMontoPagado()).isEqualByComparingTo("20");
+        assertThat(cita.getEstadoPago().getKey()).isEqualTo("PARCIAL");
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("0");
     }
 
     private Sesion sesionConCita(int numero, Long citaId, BigDecimal precio, BigDecimal montoPagado) {
@@ -148,8 +226,9 @@ class PagoServiceTest {
     void save_adelantoDePaqueteSinCitaEspecifica_repartellenandoSesionesEnOrden() {
         // Paquete de 5 sesiones a 57 c/u. Un adelanto de 100 debe dejar la sesión 1 PAGADA
         // (57/57) y la sesión 2 PARCIAL (43/57) — el resto sigue SIN_PAGO.
-        Tratamiento t = tratamiento(new BigDecimal("57"), 5, BigDecimal.ZERO, BigDecimal.ZERO);
+        Tratamiento t = tratamiento(new BigDecimal("57"), 5, BigDecimal.ZERO);
         when(tratamientoRepository.findById(1L)).thenReturn(Optional.of(t));
+        stubPaciente(BigDecimal.ZERO);
 
         Sesion s1 = sesionConCita(1, 101L, new BigDecimal("57"), BigDecimal.ZERO);
         Sesion s2 = sesionConCita(2, 102L, new BigDecimal("57"), BigDecimal.ZERO);
@@ -176,8 +255,9 @@ class PagoServiceTest {
     void save_pagoDirigidoAUnaCitaDelPaquete_completaLaQueYaEstabaParcial() {
         // La cita ya tenía 26 de 57 pagado (PARCIAL de un adelanto anterior); un pago de 31
         // dirigido a esa misma cita debe completarla a PAGADA sin volver a cobrar el precio entero.
-        Tratamiento t = tratamiento(new BigDecimal("57"), 5, new BigDecimal("26"), BigDecimal.ZERO);
+        Tratamiento t = tratamiento(new BigDecimal("57"), 5, new BigDecimal("26"));
         when(tratamientoRepository.findById(1L)).thenReturn(Optional.of(t));
+        stubPaciente(BigDecimal.ZERO);
 
         Cita cita = new Cita();
         cita.setId(102L);
@@ -199,9 +279,11 @@ class PagoServiceTest {
     }
 
     @Test
-    void delete_revierteElTotalCobradoYRestauraElSaldoPrevio() {
-        Tratamiento t = tratamiento(new BigDecimal("50"), 10, new BigDecimal("500"), new BigDecimal("50"));
+    void delete_revierteElTotalCobradoYRestauraElSaldoPrevioDelPaciente() {
+        Tratamiento t = tratamiento(new BigDecimal("50"), 10, new BigDecimal("500"));
         when(tratamientoRepository.findById(1L)).thenReturn(Optional.of(t));
+        Paciente paciente = paciente(new BigDecimal("50"));
+        when(pacienteRepository.findById(1L)).thenReturn(Optional.of(paciente));
 
         Pago pagoAEliminar = pagoParaTratamiento(1L, new BigDecimal("100"));
         pagoAEliminar.setId(7L);
@@ -213,6 +295,6 @@ class PagoServiceTest {
 
         assertThat(eliminado).isTrue();
         assertThat(t.getTotalCobrado()).isEqualByComparingTo("450");
-        assertThat(t.getSaldoAFavor()).isEqualByComparingTo("0");
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("0");
     }
 }

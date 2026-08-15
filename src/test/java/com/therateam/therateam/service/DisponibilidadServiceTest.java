@@ -69,7 +69,7 @@ class DisponibilidadServiceTest {
         when(horarioRepository.findByTerapeutaIdAndDiaSemanaAndActivoTrue(TERAPEUTA_ID, 4))
                 .thenReturn(List.of(horario(4, "08:00", "13:00")));
         when(excepcionRepository.findByTerapeutaIdAndFecha(eq(TERAPEUTA_ID), any())).thenReturn(List.of());
-        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
                 eq(TERAPEUTA_ID), any(), any(), anyString())).thenReturn(List.of());
 
         boolean disponible = service.estaDisponible(TERAPEUTA_ID,
@@ -83,7 +83,7 @@ class DisponibilidadServiceTest {
         when(horarioRepository.findByTerapeutaIdAndDiaSemanaAndActivoTrue(TERAPEUTA_ID, 4))
                 .thenReturn(List.of(horario(4, "08:00", "13:00")));
         when(excepcionRepository.findByTerapeutaIdAndFecha(eq(TERAPEUTA_ID), any())).thenReturn(List.of());
-        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
                 eq(TERAPEUTA_ID), any(), any(), anyString())).thenReturn(List.of());
 
         boolean disponible = service.estaDisponible(TERAPEUTA_ID,
@@ -97,7 +97,7 @@ class DisponibilidadServiceTest {
         when(horarioRepository.findByTerapeutaIdAndDiaSemanaAndActivoTrue(TERAPEUTA_ID, 4))
                 .thenReturn(List.of(horario(4, "08:00", "13:00")));
         when(excepcionRepository.findByTerapeutaIdAndFecha(eq(TERAPEUTA_ID), any())).thenReturn(List.of());
-        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
                 eq(TERAPEUTA_ID), any(), any(), anyString()))
                 .thenReturn(List.of(citaEntre(99L, JUEVES.atTime(8, 0), JUEVES.atTime(8, 40))));
 
@@ -117,7 +117,7 @@ class DisponibilidadServiceTest {
         when(horarioRepository.findByTerapeutaIdAndDiaSemanaAndActivoTrue(TERAPEUTA_ID, 4))
                 .thenReturn(List.of(horario(4, "08:00", "13:00")));
         when(excepcionRepository.findByTerapeutaIdAndFecha(eq(TERAPEUTA_ID), any())).thenReturn(List.of());
-        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNot(
+        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
                 eq(TERAPEUTA_ID), any(), any(), anyString(), eq(10L)))
                 .thenReturn(List.of()); // la cita 10 queda excluida, no aparece como ocupación
 
@@ -147,7 +147,7 @@ class DisponibilidadServiceTest {
         TerapeutaExcepcion bloqueo = new TerapeutaExcepcion();
         bloqueo.setTipo("BLOQUEO_TOTAL");
         when(excepcionRepository.findByTerapeutaIdAndFecha(eq(TERAPEUTA_ID), any())).thenReturn(List.of(bloqueo));
-        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNot(
+        when(citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
                 eq(TERAPEUTA_ID), any(), any(), anyString())).thenReturn(List.of());
 
         boolean disponible = service.estaDisponible(TERAPEUTA_ID,
