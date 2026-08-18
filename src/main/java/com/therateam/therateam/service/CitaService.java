@@ -3,6 +3,7 @@ package com.therateam.therateam.service;
 import com.therateam.therateam.dto.CitaConPacienteRequest;
 import com.therateam.therateam.dto.CitaDTO;
 import com.therateam.therateam.dto.CitaRapidaRequest;
+import com.therateam.therateam.dto.LoteResumenDTO;
 import com.therateam.therateam.dto.PacienteInput;
 import com.therateam.therateam.model.*;
 import com.therateam.therateam.repository.*;
@@ -38,6 +39,10 @@ public class CitaService {
     private final PagoRepository pagoRepository;
     private final CatMetodoPagoRepository catMetodoPagoRepository;
     private final DisponibilidadService disponibilidadService;
+    private final PagoService pagoService;
+
+    /** Claves reales de "cancelada" en el catálogo — no existe una única key "CANCELADA". */
+    private static final List<String> ESTADOS_CANCELADOS = List.of("CANCELADA_PACIENTE", "CANCELADA_CLINICA");
 
     public List<CitaDTO> findAll() {
         return citaRepository.findAllProjected(org.springframework.data.domain.Pageable.unpaged()).getContent();
@@ -72,6 +77,33 @@ public class CitaService {
         return citaRepository.findByPacienteIdProjected(pacienteId);
     }
 
+    /** Cuántas citas de un lote de "citas masivas" faltan/ya se atendieron/se cancelaron/faltan por crear. */
+    public LoteResumenDTO resumenLote(String loteMasivoId) {
+        List<Cita> citas = citaRepository.findByLoteMasivoIdAndEliminadoFalse(loteMasivoId);
+        int total = citas.size();
+        int atendidas = (int) citas.stream()
+                .filter(c -> c.getEstado() != null && "ASISTIDA".equals(c.getEstado().getKey())).count();
+        int canceladas = (int) citas.stream()
+                .filter(c -> c.getEstado() != null && ESTADOS_CANCELADOS.contains(c.getEstado().getKey())).count();
+        int pendientes = total - atendidas - canceladas;
+        Integer totalPlaneado = citas.stream().map(Cita::getLoteTotalPlaneado)
+                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        Integer faltanPorCrear = totalPlaneado != null ? Math.max(0, totalPlaneado - (total - canceladas)) : null;
+        return new LoteResumenDTO(loteMasivoId, total, atendidas, pendientes, canceladas, totalPlaneado, faltanPorCrear);
+    }
+
+    /** No se puede pasar del total planeado del lote — las citas ya canceladas no cuentan
+     *  (cancelar libera cupo para crear una de reemplazo, igual que un paquete). */
+    private void validarCupoLote(String loteMasivoId, Integer totalPlaneado) {
+        if (totalPlaneado == null) return;
+        long activas = citaRepository.findByLoteMasivoIdAndEliminadoFalse(loteMasivoId).stream()
+                .filter(c -> c.getEstado() == null || !ESTADOS_CANCELADOS.contains(c.getEstado().getKey()))
+                .count();
+        if (activas >= totalPlaneado) {
+            throw new IllegalArgumentException("Este grupo ya tiene todas sus citas creadas (" + activas + "/" + totalPlaneado + ").");
+        }
+    }
+
     public Cita save(Cita cita) { return citaRepository.save(cita); }
 
     public Optional<Cita> update(Long id, Cita data) {
@@ -79,10 +111,20 @@ public class CitaService {
             Long terapeutaOriginalId = e.getTerapeuta() != null ? e.getTerapeuta().getId() : null;
             LocalDateTime inicioOriginal = e.getFechaInicio();
             LocalDateTime finOriginal = e.getFechaFin();
+            String estadoOriginalKey = e.getEstado() != null ? e.getEstado().getKey() : null;
 
             if (data.getPaciente() != null) e.setPaciente(data.getPaciente());
             e.setTerapeuta(data.getTerapeuta());
             e.setModalidad(data.getModalidad());
+            // Reprogramar (cambiar fecha/hora) una cita ya atendida no tiene sentido — la atención
+            // clínica ya quedó registrada contra ese horario. Sí se permite reprogramar citas
+            // pagadas o parcialmente pagadas mientras no se hayan atendido todavía.
+            boolean fechaCambio = !java.util.Objects.equals(inicioOriginal, data.getFechaInicio())
+                    || !java.util.Objects.equals(finOriginal, data.getFechaFin());
+            if (fechaCambio && "ASISTIDA".equals(estadoOriginalKey)) {
+                throw new IllegalArgumentException("No se puede reprogramar una cita que ya fue atendida.");
+            }
+
             e.setFechaInicio(data.getFechaInicio());
             e.setFechaFin(data.getFechaFin());
             e.setDuracionMinutos(data.getDuracionMinutos());
@@ -152,6 +194,147 @@ public class CitaService {
     }
 
     /**
+     * Anula la cita (queda en un estado CANCELADA_*, visible en agendas como cancelada, y libera
+     * el horario/sesión) y resuelve el dinero según `tipoDevolucion`:
+     * - "SALDO" (default): el monto ya aplicado se retira de la deuda pero no desaparece, pasa a
+     *   quedar como saldo a favor del paciente para su próxima cita/paquete.
+     * - "DINERO": se revierte la deuda y se registra una devolución (auditable, el pago original
+     *   nunca se borra); no genera saldo a favor.
+     * Si la cita es de un paquete, el dinero se descuenta del `totalCobrado` del tratamiento (no
+     * hay un Pago 1:1 con la sesión — puede estar repartido entre varios). `metodoId` es opcional:
+     * solo se usa para el registro de devolución de una cita de paquete cuando no se puede inferir
+     * del historial de pagos del tratamiento.
+     * No se puede anular una cita ya ASISTIDA (para eso hay que deshacer la atención primero).
+     */
+    @Transactional
+    public Optional<CitaDTO> anular(Long id, String tipoDevolucion, Long metodoId) {
+        return citaRepository.findById(id).map(cita -> {
+            validarAnulable(cita);
+            anularCitaInterna(cita, tipoDevolucion, metodoId);
+            Cita saved = citaRepository.save(cita);
+            sesionRepository.desvincularCitaActiva(id);
+            return toDTO(saved);
+        });
+    }
+
+    /**
+     * Anula TODAS las citas pendientes (no ASISTIDA, no ya canceladas) de un paquete, con el mismo
+     * criterio de devolución que {@link #anular}. Las sesiones ya atendidas no se tocan.
+     */
+    @Transactional
+    public List<CitaDTO> anularPaquete(Long tratamientoId, String tipoDevolucion, Long metodoId) {
+        if (!tratamientoRepository.existsById(tratamientoId)) {
+            throw new IllegalArgumentException("Paquete no encontrado: " + tratamientoId);
+        }
+        List<CitaDTO> resultado = new java.util.ArrayList<>();
+        for (Sesion s : sesionRepository.findByTratamientoIdWithCita(tratamientoId)) {
+            Cita cita = s.getCitaActiva();
+            if (cita == null) continue;
+            String estadoActual = cita.getEstado() != null ? cita.getEstado().getKey() : null;
+            if ("ASISTIDA".equals(estadoActual) || ESTADOS_CANCELADOS.contains(estadoActual)) continue;
+
+            anularCitaInterna(cita, tipoDevolucion, metodoId);
+            Cita saved = citaRepository.save(cita);
+            sesionRepository.desvincularCitaActiva(cita.getId());
+            resultado.add(toDTO(saved));
+        }
+        return resultado;
+    }
+
+    private void validarAnulable(Cita cita) {
+        String estadoActual = cita.getEstado() != null ? cita.getEstado().getKey() : null;
+        if ("ASISTIDA".equals(estadoActual)) {
+            throw new IllegalArgumentException("No se puede anular una cita que ya fue atendida.");
+        }
+        if (ESTADOS_CANCELADOS.contains(estadoActual)) {
+            throw new IllegalArgumentException("Esta cita ya está anulada.");
+        }
+    }
+
+    /** Revierte el dinero de una cita (suelta o de paquete) y la deja CANCELADA_CLINICA. */
+    private void anularCitaInterna(Cita cita, String tipoDevolucion, Long metodoId) {
+        boolean devolverComoDinero = "DINERO".equalsIgnoreCase(tipoDevolucion);
+
+        if (cita.getSesion() != null && cita.getSesion().getTratamiento() != null) {
+            // Cita de paquete: el pago está contra el tratamiento (repartido entre sesiones), no
+            // hay un Pago propio de esta cita — se revierte por monto, no por fila de Pago.
+            Tratamiento tratamiento = cita.getSesion().getTratamiento();
+            BigDecimal montoDeEstaSesion = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
+            if (montoDeEstaSesion.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal totalCobrado = tratamiento.getTotalCobrado() != null ? tratamiento.getTotalCobrado() : BigDecimal.ZERO;
+                tratamiento.setTotalCobrado(totalCobrado.subtract(montoDeEstaSesion).max(BigDecimal.ZERO));
+                tratamientoRepository.save(tratamiento);
+
+                if (devolverComoDinero) {
+                    Long metodoResuelto = metodoId != null ? metodoId : pagoService.metodoMasRecienteDelTratamiento(tratamiento.getId());
+                    String numeroSesion = cita.getSesion().getNumero() != null ? " #" + cita.getSesion().getNumero() : "";
+                    pagoService.crearDevolucionManual(cita.getPaciente(), tratamiento, cita, montoDeEstaSesion, metodoResuelto,
+                            "Devolución por anulación de sesión" + numeroSesion + " del paquete " + tratamiento.getNombre());
+                } else {
+                    sumarSaldoAFavor(cita.getPaciente(), montoDeEstaSesion);
+                }
+            }
+            cita.setMontoPagado(BigDecimal.ZERO);
+            cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey("SIN_PAGO").orElse(null));
+        } else {
+            // Cita suelta: usa los Pagos ligados directamente a ella.
+            for (Pago pago : pagoRepository.findByCitaId(cita.getId())) {
+                // Los pagos ya son devoluciones o cobros adicionales — no se vuelven a procesar.
+                if (Boolean.TRUE.equals(pago.getEsDevolucion()) || Boolean.TRUE.equals(pago.getEsAdicional())) continue;
+                if (devolverComoDinero) {
+                    pagoService.devolver(pago.getId());
+                } else {
+                    pagoService.revertirComoSaldoAFavor(pago.getId());
+                }
+            }
+        }
+
+        CatEstadoCita cancelada = catEstadoCitaRepository.findByKey("CANCELADA_CLINICA")
+                .orElseThrow(() -> new IllegalStateException("No existe el estado CANCELADA_CLINICA en el catálogo."));
+        cita.setEstado(cancelada);
+    }
+
+    private void sumarSaldoAFavor(Paciente paciente, BigDecimal monto) {
+        if (paciente == null || paciente.getId() == null || monto.compareTo(BigDecimal.ZERO) <= 0) return;
+        pacienteRepository.findById(paciente.getId()).ifPresent(p -> {
+            BigDecimal saldo = p.getSaldoAFavor() != null ? p.getSaldoAFavor() : BigDecimal.ZERO;
+            p.setSaldoAFavor(saldo.add(monto));
+            pacienteRepository.save(p);
+        });
+    }
+
+    /**
+     * Da la sesión donde debe engancharse una cita nueva de este paquete. Si una sesión anterior
+     * quedó libre (su cita fue anulada — {@link #anularCitaInterna} desvincula pero no borra la
+     * Sesion), se reutiliza esa en vez de crear una nueva; así anular de verdad libera cupo para
+     * reprogramar. Solo se crea una Sesion nueva si no hay ninguna libre Y el paquete todavía no
+     * llegó a su total de sesiones contratadas — si no, se rechaza (evita que un paquete de 5
+     * termine con 6+ sesiones creadas).
+     */
+    private Sesion obtenerOCrearSesionDisponible(Tratamiento tratamiento) {
+        List<Sesion> sesiones = sesionRepository.findByTratamientoId(tratamiento.getId());
+
+        Optional<Sesion> libre = sesiones.stream()
+                .filter(s -> s.getCitaActiva() == null)
+                .min(java.util.Comparator.comparing(Sesion::getNumero));
+        if (libre.isPresent()) return libre.get();
+
+        int totalSesiones = tratamiento.getTotalSesiones() != null ? tratamiento.getTotalSesiones() : 0;
+        if (sesiones.size() >= totalSesiones) {
+            throw new IllegalArgumentException("El paquete ya tiene todas sus sesiones creadas ("
+                    + sesiones.size() + "/" + totalSesiones + ").");
+        }
+
+        CatEstadoSesion estadoSesion = catEstadoSesionRepository.findByKey("PENDIENTE")
+                .orElseGet(() -> catEstadoSesionRepository.findAll().stream().findFirst().orElse(null));
+        Sesion nueva = new Sesion();
+        nueva.setTratamiento(tratamiento);
+        nueva.setNumero(sesiones.size() + 1);
+        nueva.setEstado(estadoSesion);
+        return sesionRepository.save(nueva);
+    }
+
+    /**
      * Si el paquete ya tiene cobrado (por un pago anticipado, total o parcial) lo suficiente
      * para cubrir la sesión número `numeroSesion`, la cita nace PAGADA sin necesidad de un
      * Pago nuevo — el dinero ya entró antes, esto solo refleja que esa sesión puntual ya
@@ -214,14 +397,8 @@ public class CitaService {
             tratamiento = tratamientoRepository.findById(req.getTratamientoId())
                     .orElseThrow(() -> new IllegalArgumentException("Tratamiento no encontrado: " + req.getTratamientoId()));
 
-            siguienteNumero = sesionRepository.findByTratamientoId(tratamiento.getId()).size() + 1;
-            CatEstadoSesion estadoSesion = catEstadoSesionRepository.findByKey("PENDIENTE")
-                    .orElseGet(() -> catEstadoSesionRepository.findAll().stream().findFirst().orElse(null));
-            sesion = new Sesion();
-            sesion.setTratamiento(tratamiento);
-            sesion.setNumero(siguienteNumero);
-            sesion.setEstado(estadoSesion);
-            sesion = sesionRepository.save(sesion);
+            sesion = obtenerOCrearSesionDisponible(tratamiento);
+            siguienteNumero = sesion.getNumero();
         }
 
         TipoTerapia tipoParaCapacidad = tratamiento != null && tratamiento.getTipoTerapia() != null
@@ -392,14 +569,15 @@ public class CitaService {
         if (p1 != null) {
             resultado.add(crearCitaParaPaciente(p1, terapeuta, tipoTerapia, estadoCita, modalidad,
                     req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
-                    req.getPrecioPorSesion(), req.getTratamientoId(), tipoRecurrencia));
+                    req.getPrecioPorSesion(), req.getTratamientoId(), tipoRecurrencia,
+                    req.getLoteMasivoId(), req.getTotalSesionesPlan()));
         }
 
         if (req.getPaciente2() != null) {
             Paciente p2 = buscarOCrearPaciente(req.getPaciente2());
             resultado.add(crearCitaParaPaciente(p2, terapeuta, tipoTerapia, estadoCita, modalidad,
                     req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
-                    req.getPrecioPorSesion(), null, tipoRecurrencia));
+                    req.getPrecioPorSesion(), null, tipoRecurrencia, null, null));
         }
 
         return resultado;
@@ -412,10 +590,16 @@ public class CitaService {
                                            String observacion,
                                            BigDecimal precioPorSesion,
                                            Long tratamientoIdExplicito,
-                                           String tipoRecurrencia) {
+                                           String tipoRecurrencia,
+                                           String loteMasivoId,
+                                           Integer loteTotalPlaneado) {
         validarDisponibilidad(terapeuta, fechaInicio, fechaFin,
                 tipoTerapia != null ? tipoTerapia.getMaxPacientes() : null, null);
         validarPacienteDisponible(paciente, fechaInicio, fechaFin, null);
+
+        if (loteMasivoId != null) {
+            validarCupoLote(loteMasivoId, loteTotalPlaneado);
+        }
 
         Tratamiento tratamiento = null;
         Sesion sesion = null;
@@ -428,14 +612,8 @@ public class CitaService {
             if (tratamiento.getPaciente() == null || !tratamiento.getPaciente().getId().equals(paciente.getId())) {
                 throw new IllegalArgumentException("El tratamiento seleccionado no pertenece a este paciente");
             }
-            siguienteNumero = sesionRepository.findByTratamientoId(tratamiento.getId()).size() + 1;
-            CatEstadoSesion estadoSesion = catEstadoSesionRepository.findByKey("PENDIENTE")
-                    .orElseGet(() -> catEstadoSesionRepository.findAll().stream().findFirst().orElse(null));
-            sesion = new Sesion();
-            sesion.setTratamiento(tratamiento);
-            sesion.setNumero(siguienteNumero);
-            sesion.setEstado(estadoSesion);
-            sesion = sesionRepository.save(sesion);
+            sesion = obtenerOCrearSesionDisponible(tratamiento);
+            siguienteNumero = sesion.getNumero();
         }
         // Sin paquete: cada cita es normal e independiente — NO se crea ningún tratamiento.
         // Al atenderse, esta cita se registra como AtencionClinica, no como Sesion de un paquete.
@@ -459,6 +637,8 @@ public class CitaService {
         cita.setDuracionMinutos(duracionMinutos);
         if (observacion != null) cita.setNotasPrevias(observacion);
         cita.setTipoRecurrencia(tipoRecurrencia != null ? tipoRecurrencia : "EVENTUAL");
+        cita.setLoteMasivoId(loteMasivoId);
+        cita.setLoteTotalPlaneado(loteTotalPlaneado);
         cita = citaRepository.save(cita);
 
         if (sesion != null) {
@@ -492,10 +672,10 @@ public class CitaService {
 
         int capacidad = (maxPacientes != null && maxPacientes > 0) ? maxPacientes : 1;
         List<Cita> solapadas = excluirCitaId != null
-                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
-                        terapeuta.getId(), fin, inicio, "CANCELADA", excluirCitaId)
-                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
-                        terapeuta.getId(), fin, inicio, "CANCELADA");
+                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndIdNotAndEliminadoFalse(
+                        terapeuta.getId(), fin, inicio, ESTADOS_CANCELADOS, excluirCitaId)
+                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
+                        terapeuta.getId(), fin, inicio, ESTADOS_CANCELADOS);
         if (solapadas.size() >= capacidad) {
             throw new IllegalArgumentException("El terapeuta ya tiene el cupo completo en ese horario.");
         }
@@ -509,10 +689,10 @@ public class CitaService {
         if (paciente == null || paciente.getId() == null || inicio == null || fin == null) return;
 
         List<Cita> solapadas = excluirCitaId != null
-                ? citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
-                        paciente.getId(), fin, inicio, "CANCELADA", excluirCitaId)
-                : citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
-                        paciente.getId(), fin, inicio, "CANCELADA");
+                ? citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndIdNotAndEliminadoFalse(
+                        paciente.getId(), fin, inicio, ESTADOS_CANCELADOS, excluirCitaId)
+                : citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
+                        paciente.getId(), fin, inicio, ESTADOS_CANCELADOS);
         if (!solapadas.isEmpty()) {
             throw new IllegalArgumentException("El paciente ya tiene otra cita en ese horario — no puede estar en dos sesiones a la vez.");
         }
@@ -530,6 +710,7 @@ public class CitaService {
         dto.setTipoRecurrencia(c.getTipoRecurrencia());
         dto.setPrecio(c.getPrecio());
         dto.setMontoPagado(c.getMontoPagado());
+        dto.setLoteMasivoId(c.getLoteMasivoId());
 
         if (c.getEstado() != null) {
             dto.setEstado(c.getEstado().getKey());

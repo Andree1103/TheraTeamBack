@@ -26,7 +26,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DisponibilidadService {
 
-    private static final String ESTADO_CANCELADA = "CANCELADA";
+    private static final List<String> ESTADOS_CANCELADOS = List.of("CANCELADA_PACIENTE", "CANCELADA_CLINICA");
     private static final long SEGUNDOS_DIA = 86_400L;
 
     private final TerapeutaHorarioRepository horarioRepository;
@@ -56,10 +56,10 @@ public class DisponibilidadService {
         LocalDateTime inicioDia = fecha.atStartOfDay();
         LocalDateTime finDia = fecha.plusDays(1).atStartOfDay();
         List<Cita> citas = excluirCitaId != null
-                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
-                        terapeutaId, finDia, inicioDia, ESTADO_CANCELADA, excluirCitaId)
-                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
-                        terapeutaId, finDia, inicioDia, ESTADO_CANCELADA);
+                ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndIdNotAndEliminadoFalse(
+                        terapeutaId, finDia, inicioDia, ESTADOS_CANCELADOS, excluirCitaId)
+                : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
+                        terapeutaId, finDia, inicioDia, ESTADOS_CANCELADOS);
         for (Cita c : citas) {
             if (c.getFechaInicio() == null || c.getFechaFin() == null) continue;
             long ini = segundosDesdeInicioDia(c.getFechaInicio(), fecha);

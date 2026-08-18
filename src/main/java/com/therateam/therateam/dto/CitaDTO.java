@@ -23,7 +23,8 @@ public class CitaDTO {
                     String notasPrevias, String linkVideollamada, Boolean recordatorioEnviado,
                     String estadoPagoKey, String estadoPagoNombre, String estadoPagoColor,
                     String tipoRecurrencia, BigDecimal precio, BigDecimal montoPagado,
-                    Long tratamientoId, String tratamientoNombre) {
+                    Long tratamientoId, String tratamientoNombre, String metodoPagoNombre, String loteMasivoId,
+                    String usuarioCreacionNombre) {
         this.id = id;
         this.sesionId = sesionId;
         this.numeroSesion = numeroSesion;
@@ -57,6 +58,9 @@ public class CitaDTO {
         this.montoPagado = montoPagado;
         this.tratamientoId = tratamientoId;
         this.tratamientoNombre = tratamientoNombre;
+        this.metodoPagoNombre = metodoPagoNombre;
+        this.loteMasivoId = loteMasivoId;
+        this.usuarioCreacionNombre = usuarioCreacionNombre;
     }
 
     private Long id;
@@ -151,4 +155,16 @@ public class CitaDTO {
 
     @JsonProperty("tratamiento_nombre")
     private String tratamientoNombre;
+
+    /** Método del pago más reciente (no devolución/adicional) ligado a esta cita — null si no tiene ninguno. */
+    @JsonProperty("metodo_pago_nombre")
+    private String metodoPagoNombre;
+
+    /** Agrupador de "citas masivas" — null si esta cita no es parte de un lote. */
+    @JsonProperty("lote_masivo_id")
+    private String loteMasivoId;
+
+    /** Nombre del usuario que creó la cita. */
+    @JsonProperty("usuario_creacion_nombre")
+    private String usuarioCreacionNombre;
 }

@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.List;
 import java.util.Optional;
 
@@ -59,6 +61,7 @@ public class PacienteService {
     /** Crea el paciente y, junto con él, su cuenta de acceso (rol PACIENTE, password = su DNI). */
     @Transactional
     public Paciente save(Paciente paciente) {
+        validarApoderadoSiEsMenor(paciente);
         if (paciente.getSede() == null) {
             sedeRepository.findFirstByActivoTrueOrderByIdAsc().ifPresent(paciente::setSede);
         }
@@ -70,6 +73,7 @@ public class PacienteService {
 
     @Transactional
     public Optional<Paciente> update(Long id, Paciente data) {
+        validarApoderadoSiEsMenor(data);
         return repository.findById(id).map(existing -> {
             existing.setNombre(data.getNombre());
             existing.setApellido(data.getApellido());
@@ -77,6 +81,9 @@ public class PacienteService {
             existing.setTelefono(data.getTelefono());
             existing.setCorreo(data.getCorreo());
             existing.setFechaNacimiento(data.getFechaNacimiento());
+            existing.setDniApoderado(data.getDniApoderado());
+            existing.setNombreApoderado(data.getNombreApoderado());
+            existing.setCelularApoderado(data.getCelularApoderado());
             existing.setActivo(data.getActivo());
             // Completa la cuenta de acceso si el paciente venía sin correo (de antes de este cambio)
             // y recién ahora se le está agregando uno.
@@ -86,6 +93,24 @@ public class PacienteService {
             return repository.save(existing);
         });
     }
+
+    /**
+     * Si se conoce la fecha de nacimiento y el paciente es menor de 18, los datos del apoderado
+     * (quien responde por él) son obligatorios. Si no se conoce la fecha de nacimiento (ej. alta
+     * rápida desde Citas, que no la pide) no se puede determinar la edad — no bloquea ese flujo.
+     */
+    private void validarApoderadoSiEsMenor(Paciente p) {
+        if (p.getFechaNacimiento() == null) return;
+        int edad = Period.between(p.getFechaNacimiento(), LocalDate.now()).getYears();
+        if (edad >= 18) return;
+        boolean faltaAlgo = isBlank(p.getDniApoderado()) || isBlank(p.getNombreApoderado()) || isBlank(p.getCelularApoderado());
+        if (faltaAlgo) {
+            throw new IllegalArgumentException(
+                    "El paciente es menor de edad (" + edad + " años) — el DNI, nombre y celular del apoderado son obligatorios.");
+        }
+    }
+
+    private static boolean isBlank(String s) { return s == null || s.isBlank(); }
 
     /**
      * Cuenta de login del paciente: email = su correo, password inicial = su DNI (se lo puede

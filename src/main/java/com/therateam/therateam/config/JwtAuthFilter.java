@@ -66,6 +66,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 if (!Boolean.FALSE.equals(puedeCrearCitas)) {
                     authorities.add(new SimpleGrantedAuthority("CITAS_PUEDE_CREAR"));
                 }
+                // Dato sensible: se configura por ROL (Seguridad > Roles), no por usuario individual.
+                Boolean puedeVerTelefono = claims.get("pacientesVerTelefono", Boolean.class);
+                if (Boolean.TRUE.equals(puedeVerTelefono)) {
+                    authorities.add(new SimpleGrantedAuthority("PACIENTES_VER_TELEFONO"));
+                }
 
                 var authentication = new UsernamePasswordAuthenticationToken(
                         claims.getSubject(), null, authorities);

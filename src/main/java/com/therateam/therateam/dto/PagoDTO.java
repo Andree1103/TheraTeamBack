@@ -27,6 +27,14 @@ public class PagoDTO {
     private String notas;
     private LocalDateTime fechaPago;
     private LocalDateTime createdAt;
+    /** Concepto libre para pagos adicionales (ej. "Material adicional") — null en pagos normales. */
+    private String concepto;
+    /** true = cobro adicional (ingreso aparte, no descuenta deuda ni genera saldo a favor). */
+    private Boolean esAdicional;
+    /** true = este registro es la devolución de otro pago (dinero que salió, no que entró). */
+    private Boolean esDevolucion;
+    /** Nombre del usuario que registró el pago. */
+    private String usuarioCreacionNombre;
 
     public PagoDTO(Long id,
                     Long tratamientoId, String tratamientoNombre, String terapeutaNombre, String tipoTerapiaNombre,
@@ -35,7 +43,8 @@ public class PagoDTO {
                     BigDecimal montoRecibido, BigDecimal montoAplicado,
                     BigDecimal saldoGenerado, BigDecimal saldoPrevio,
                     String referencia, String notas,
-                    LocalDateTime fechaPago, LocalDateTime createdAt) {
+                    LocalDateTime fechaPago, LocalDateTime createdAt,
+                    String concepto, Boolean esAdicional, Boolean esDevolucion, String usuarioCreacionNombre) {
         this.id = id;
         this.tratamiento = new TratamientoInfo(tratamientoId, tratamientoNombre, terapeutaNombre, tipoTerapiaNombre);
         this.paciente = new PacienteInfo(pacienteId, pacienteNombre, pacienteApellido, pacienteDni);
@@ -48,6 +57,10 @@ public class PagoDTO {
         this.notas = notas;
         this.fechaPago = fechaPago;
         this.createdAt = createdAt;
+        this.concepto = concepto;
+        this.esAdicional = esAdicional;
+        this.esDevolucion = esDevolucion;
+        this.usuarioCreacionNombre = usuarioCreacionNombre;
     }
 
     @Data

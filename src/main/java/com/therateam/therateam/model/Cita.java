@@ -95,6 +95,21 @@ public class Cita {
      *  ella), solo la marca oculta — desaparece de agendas y listados pero queda para auditoría. */
     private Boolean eliminado = false;
 
+    /**
+     * Agrupador liviano para "citas masivas": todas las citas creadas en un mismo lote comparten
+     * este id (generado por el front, no es un id de BD) — permite contar cuántas del grupo
+     * faltan/ya se atendieron SIN crear un Tratamiento ni aparecer en el catálogo de Paquetes.
+     * Cada cita del grupo sigue siendo independiente en precio/pago, como cualquier cita suelta.
+     */
+    @Column(name = "lote_masivo_id")
+    private String loteMasivoId;
+
+    /** Total de citas planeadas para el lote (mismo valor repetido en todas sus citas) — permite
+     *  poner tope (no pasarse del total) y saber cuántas faltan por crear, sin depender de una
+     *  tabla aparte. Null si la cita no es parte de un lote. */
+    @Column(name = "lote_total_planeado")
+    private Integer loteTotalPlaneado;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();

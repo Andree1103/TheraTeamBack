@@ -1,2 +1,5 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+# Se ejecutan en el servidor Linux — con CRLF, bash falla con "\r: command not found".
+*.sh text eol=lf
+*.sql text eol=lf

@@ -68,30 +68,42 @@ Como no hay Flyway/Liquibase, cualquier `ALTER TABLE`/nueva columna/tabla se apl
 4. Borra la clase temporal y recompila.
 5. Reinicia el backend para que tome el nuevo esquema.
 
-Aplica el mismo cambio también en producción (contra la base de Railway) antes o después de desplegar el código que lo usa, según corresponda.
+El mismo cambio hay que aplicarlo también en producción. Como `ddl-auto=none`, Hibernate **no** crea columnas solo: si el código nuevo llega antes que la migración, el backend arranca pero falla en runtime al tocar esa tabla. Ver "Migraciones de esquema" más abajo.
 
-## Despliegue (Railway)
+## Despliegue (VPS por SSH)
 
-El backend está desplegado en Railway: `https://therateamback-production.up.railway.app`.
+El backend corre en un VPS (`49.13.196.23`) con Docker Compose: Postgres + backend + Caddy (TLS automático vía `49.13.196.23.sslip.io`). El frontend va aparte, en Cloudflare Pages, con deploy automático en cada push a `main` de su repo.
 
-- Railway detecta el proyecto Maven automáticamente y lo compila con Nixpacks (no requiere Dockerfile).
-- Deploy automático en cada push a `main`.
-- Variables de entorno configuradas en el servicio (pestaña **Variables**): `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` (referenciando el servicio de Postgres con `${{Postgres.PGHOST}}` etc.), y `CORS_ALLOWED_ORIGINS` apuntando al dominio de Netlify del frontend.
-- **Importante**: en Railway, después de agregar/editar variables hay que confirmar el botón **"Deploy"** ("Apply changes") — guardarlas solas no redeploya el servicio.
+El despliegue **no** es automático: se hace por SSH.
+
+```bash
+ssh root@49.13.196.23
+cd /ruta/del/repo && ./deploy.sh
+```
+
+`deploy.sh` hace, en orden: backup de la BD → `git pull` → aplica las migraciones de `db/migrations/` → `docker compose up -d --build backend` → espera a que la API responda. Aborta si el backup sale vacío, y si el backend no levanta imprime el comando de restore.
+
+Variables de entorno: en el archivo `.env` del servidor, junto al `docker-compose.yml` (ver `.env.example`). No está en git.
+
+### Migraciones de esquema
+
+Cada cambio de esquema va como un `.sql` nuevo en `db/migrations/`, con fecha en el nombre. Se escriben **idempotentes** (`ADD COLUMN IF NOT EXISTS`) porque `deploy.sh` reaplica todos los archivos del directorio en cada despliegue.
+
+Las columnas aditivas (nullable o con `DEFAULT`) se pueden aplicar con el backend viejo todavía corriendo — las ignora. Un cambio destructivo (borrar/renombrar columna) sí necesita coordinarse con el reinicio.
 
 ### Backup / restore de la base de datos
 
-Exportar local:
+`deploy.sh` ya hace un backup antes de cada despliegue, en `~/backups/` del servidor. Manualmente:
+
 ```bash
-pg_dump -h localhost -U postgres -d BDClinicaSAAS -F c -f backup.dump
+docker compose exec -T db pg_dump -U postgres -d BDClinicaSAAS -F c > backup.dump
 ```
 
-Restaurar en Railway (usa el host/puerto del **TCP Proxy público**, en Postgres → Settings → Networking):
+Restaurar:
 ```bash
-pg_restore -h <host-proxy-railway> -p <puerto-proxy> -U <PGUSER> -d <PGDATABASE> \
-  --no-owner --no-privileges -v backup.dump
+docker compose exec -T db pg_restore -U postgres -d BDClinicaSAAS --clean --no-owner < backup.dump
 ```
-`--no-owner --no-privileges` evita errores porque el usuario dueño de las tablas en local no existe igual en Railway.
+`--no-owner` evita errores cuando el usuario dueño de las tablas en el dump no existe igual en el destino.
 
 ## Estructura relevante
 

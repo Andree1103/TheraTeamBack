@@ -6,7 +6,9 @@ import com.therateam.therateam.model.Paciente;
 import com.therateam.therateam.model.Pago;
 import com.therateam.therateam.model.Sesion;
 import com.therateam.therateam.model.Tratamiento;
+import com.therateam.therateam.model.CatMetodoPago;
 import com.therateam.therateam.repository.CatEstadoPagoCitaRepository;
+import com.therateam.therateam.repository.CatMetodoPagoRepository;
 import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PacienteRepository;
 import com.therateam.therateam.repository.PagoRepository;
@@ -33,6 +35,7 @@ public class PagoService {
     private final TratamientoRepository tratamientoRepository;
     private final SesionRepository sesionRepository;
     private final PacienteRepository pacienteRepository;
+    private final CatMetodoPagoRepository catMetodoPagoRepository;
 
     public List<PagoDTO> findAll() { return repository.findAllProjected(); }
 
@@ -63,6 +66,17 @@ public class PagoService {
     public Pago save(Pago p) {
         Paciente paciente = pacienteRepository.findById(p.getPaciente().getId())
                 .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado"));
+
+        // Cobro adicional (ej. "se atendió y se le vendió algo más"): es ingreso aparte, no paga
+        // ninguna deuda de cita/paquete ni genera saldo a favor — se registra tal cual se cobró.
+        if (Boolean.TRUE.equals(p.getEsAdicional())) {
+            BigDecimal monto = p.getMontoRecibido() != null ? p.getMontoRecibido() : BigDecimal.ZERO;
+            p.setMontoAplicado(monto);
+            p.setSaldoGenerado(BigDecimal.ZERO);
+            p.setSaldoPrevio(paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO);
+            return repository.save(p);
+        }
+
         BigDecimal montoRecibido  = p.getMontoRecibido() != null ? p.getMontoRecibido() : BigDecimal.ZERO;
         BigDecimal saldoPrevio    = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
         BigDecimal montoDisponible = montoRecibido.add(saldoPrevio);
@@ -236,11 +250,132 @@ public class PagoService {
         }
     }
 
+    /**
+     * Devuelve el dinero de un pago sin borrarlo — a diferencia de {@link #delete}, el pago
+     * original queda intacto como evidencia de que el dinero entró, y se crea un segundo registro
+     * (esDevolucion=true, ligado por pagoOrigenId) como evidencia de que salió. Se usa al anular
+     * una cita con devolución "DINERO": el paciente no se queda con saldo a favor, pero tampoco
+     * desaparece el rastro contable de la transacción.
+     */
+    @Transactional
+    public Pago devolver(Long pagoOrigenId) {
+        Pago original = repository.findById(pagoOrigenId)
+                .orElseThrow(() -> new IllegalArgumentException("Pago no encontrado: " + pagoOrigenId));
+
+        revertir(original); // deshace el efecto en tratamiento/cita y restaura el saldo previo del paciente
+
+        BigDecimal montoDevuelto = original.getMontoAplicado() != null ? original.getMontoAplicado() : BigDecimal.ZERO;
+        BigDecimal saldoActual = BigDecimal.ZERO;
+        if (original.getPaciente() != null && original.getPaciente().getId() != null) {
+            saldoActual = pacienteRepository.findById(original.getPaciente().getId())
+                    .map(p -> p.getSaldoAFavor() != null ? p.getSaldoAFavor() : BigDecimal.ZERO)
+                    .orElse(BigDecimal.ZERO);
+        }
+
+        Pago devolucion = new Pago();
+        devolucion.setPaciente(original.getPaciente());
+        devolucion.setTratamiento(original.getTratamiento());
+        devolucion.setCita(original.getCita());
+        devolucion.setMetodo(original.getMetodo());
+        devolucion.setMontoRecibido(montoDevuelto);
+        devolucion.setMontoAplicado(BigDecimal.ZERO);
+        devolucion.setSaldoGenerado(BigDecimal.ZERO);
+        devolucion.setSaldoPrevio(saldoActual);
+        devolucion.setEsDevolucion(true);
+        devolucion.setPagoOrigenId(original.getId());
+        devolucion.setConcepto("Devolución del pago #" + original.getId());
+        devolucion.setNotas("Devolución de dinero por anulación de cita");
+        return repository.save(devolucion);
+    }
+
+    /**
+     * Igual que {@link #devolver}, pero para cuando NO existe un único Pago que "sea" el origen
+     * de la plata a devolver — típicamente una sesión de un paquete, cuyo cobro está repartido
+     * dentro de un Pago que cubre varias sesiones a la vez. El caller ya revirtió lo que
+     * corresponde en tratamiento/cita; acá solo se deja el registro de auditoría de la devolución.
+     */
+    @Transactional
+    public Pago crearDevolucionManual(Paciente paciente, Tratamiento tratamiento, Cita cita,
+                                       BigDecimal monto, Long metodoId, String concepto) {
+        CatMetodoPago metodo = metodoId != null ? catMetodoPagoRepository.findById(metodoId).orElse(null) : null;
+        BigDecimal saldoActual = BigDecimal.ZERO;
+        if (paciente != null && paciente.getId() != null) {
+            saldoActual = pacienteRepository.findById(paciente.getId())
+                    .map(p -> p.getSaldoAFavor() != null ? p.getSaldoAFavor() : BigDecimal.ZERO)
+                    .orElse(BigDecimal.ZERO);
+        }
+
+        Pago devolucion = new Pago();
+        devolucion.setPaciente(paciente);
+        devolucion.setTratamiento(tratamiento);
+        devolucion.setCita(cita);
+        devolucion.setMetodo(metodo);
+        devolucion.setMontoRecibido(monto);
+        devolucion.setMontoAplicado(BigDecimal.ZERO);
+        devolucion.setSaldoGenerado(BigDecimal.ZERO);
+        devolucion.setSaldoPrevio(saldoActual);
+        devolucion.setEsDevolucion(true);
+        devolucion.setConcepto(concepto);
+        devolucion.setNotas(concepto);
+        return repository.save(devolucion);
+    }
+
+    /** El método más reciente usado en un pago real (no devolución/adicional) del paquete —
+     *  default razonable para la devolución cuando no se especifica uno explícito. */
+    public Long metodoMasRecienteDelTratamiento(Long tratamientoId) {
+        return repository.findByTratamientoId(tratamientoId).stream()
+                .filter(p -> !Boolean.TRUE.equals(p.getEsDevolucion()) && !Boolean.TRUE.equals(p.getEsAdicional()))
+                .filter(p -> p.getMetodo() != null)
+                .max((a, b) -> Long.compare(a.getId(), b.getId()))
+                .map(p -> p.getMetodo().getId())
+                .orElse(null);
+    }
+
     public boolean delete(Long id) {
         return repository.findById(id).map(p -> {
             revertir(p);
             repository.deleteById(id);
             return true;
         }).orElse(false);
+    }
+
+    /**
+     * Anula el efecto de un pago sobre la deuda del tratamiento/cita (como {@link #revertir}),
+     * pero a diferencia de {@link #delete} el monto ya aplicado no desaparece: se suma al saldo
+     * a favor del paciente. El registro del pago se conserva (auditoría de que el dinero entró),
+     * solo deja de contar como abono de esa cita/paquete. Usado al anular una cita con
+     * devolución "SALDO".
+     */
+    @Transactional
+    public void revertirComoSaldoAFavor(Long id) {
+        repository.findById(id).ifPresent(p -> {
+            BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
+
+            if (p.getTratamiento() != null && p.getTratamiento().getId() != null) {
+                tratamientoRepository.findById(p.getTratamiento().getId()).ifPresent(t -> {
+                    BigDecimal totalCobrado = t.getTotalCobrado() != null ? t.getTotalCobrado() : BigDecimal.ZERO;
+                    t.setTotalCobrado(totalCobrado.subtract(montoAplicado).max(BigDecimal.ZERO));
+                    tratamientoRepository.save(t);
+                });
+            } else if (p.getCita() != null && p.getCita().getId() != null) {
+                citaRepository.findById(p.getCita().getId()).ifPresent(cita -> {
+                    if (cita.getPrecio() == null || cita.getPrecio().compareTo(BigDecimal.ZERO) <= 0) return;
+                    BigDecimal montoPagado = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
+                    BigDecimal nuevo = montoPagado.subtract(montoAplicado).max(BigDecimal.ZERO);
+                    cita.setMontoPagado(nuevo);
+                    cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey(
+                            estadoPagoPorMonto(nuevo, cita.getPrecio())).orElse(null));
+                    citaRepository.save(cita);
+                });
+            }
+
+            if (montoAplicado.compareTo(BigDecimal.ZERO) > 0 && p.getPaciente() != null && p.getPaciente().getId() != null) {
+                pacienteRepository.findById(p.getPaciente().getId()).ifPresent(paciente -> {
+                    BigDecimal saldo = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
+                    paciente.setSaldoAFavor(saldo.add(montoAplicado));
+                    pacienteRepository.save(paciente);
+                });
+            }
+        });
     }
 }

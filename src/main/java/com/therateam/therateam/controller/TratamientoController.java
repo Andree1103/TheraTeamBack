@@ -2,10 +2,13 @@ package com.therateam.therateam.controller;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import com.therateam.therateam.config.SecurityUtils;
+import com.therateam.therateam.dto.CitaDTO;
 import com.therateam.therateam.dto.SesionDTO;
 import com.therateam.therateam.dto.TratamientoCoberturaDTO;
 import com.therateam.therateam.dto.TratamientoDTO;
 import com.therateam.therateam.model.Tratamiento;
+import com.therateam.therateam.service.CitaService;
 import com.therateam.therateam.service.TratamientoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,14 @@ import java.util.List;
 public class TratamientoController {
 
     private final TratamientoService service;
+    private final CitaService citaService;
+
+    /** El celular es un dato sensible: por defecto ningún usuario lo ve, salvo que se le active
+     *  el permiso puntual desde Seguridad > Usuarios. */
+    private TratamientoDTO redactarTelefono(TratamientoDTO dto) {
+        if (dto != null && !SecurityUtils.puedeVerTelefonoPacientes()) dto.setPacienteTelefono(null);
+        return dto;
+    }
 
     /** GET /api/tratamientos?page=0&size=20&paciente=x&terapeuta=x&tipoTerapiaId=1&estado=EN_CURSO */
     @GetMapping
@@ -32,13 +43,14 @@ public class TratamientoController {
                                         @RequestParam(required = false) String terapeuta,
                                         @RequestParam(required = false) Long tipoTerapiaId,
                                         @RequestParam(required = false) String estado) {
-        return service.findAllPaged(pageable, paciente, terapeuta, tipoTerapiaId, estado);
+        return service.findAllPaged(pageable, paciente, terapeuta, tipoTerapiaId, estado).map(this::redactarTelefono);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<TratamientoDTO> getById(@PathVariable Long id) {
         return service.findById(id)
                 .map(service::toDTO)
+                .map(this::redactarTelefono)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -58,14 +70,14 @@ public class TratamientoController {
     @GetMapping("/paciente/{pacienteId}")
     public Page<TratamientoDTO> getByPaciente(@PathVariable Long pacienteId,
                                                @PageableDefault(size = 20) Pageable pageable) {
-        return service.findByPacientePaged(pacienteId, pageable);
+        return service.findByPacientePaged(pacienteId, pageable).map(this::redactarTelefono);
     }
 
     /** GET /api/tratamientos/terapeuta/{id}?page=0&size=20 */
     @GetMapping("/terapeuta/{terapeutaId}")
     public Page<TratamientoDTO> getByTerapeuta(@PathVariable Long terapeutaId,
                                                 @PageableDefault(size = 20) Pageable pageable) {
-        return service.findByTerapeutaPaged(terapeutaId, pageable);
+        return service.findByTerapeutaPaged(terapeutaId, pageable).map(this::redactarTelefono);
     }
 
     @PreAuthorize("hasAuthority('MODULO_PAQUETES_CREAR')")
@@ -84,5 +96,18 @@ public class TratamientoController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+    }
+
+    /**
+     * POST /api/tratamientos/{id}/anular?devolucion=SALDO|DINERO&metodoId=1 — anula TODAS las
+     * citas pendientes del paquete (no toca las ya ASISTIDA ni las ya canceladas) y resuelve el
+     * dinero de cada una igual que anular una cita suelta.
+     */
+    @PreAuthorize("hasAuthority('MODULO_PAQUETES_ELIMINAR') and hasAuthority('MODULO_CITAS_ELIMINAR')")
+    @PostMapping("/{id}/anular")
+    public ResponseEntity<List<CitaDTO>> anular(@PathVariable Long id,
+                                                 @RequestParam(defaultValue = "SALDO") String devolucion,
+                                                 @RequestParam(required = false) Long metodoId) {
+        return ResponseEntity.ok(citaService.anularPaquete(id, devolucion, metodoId));
     }
 }

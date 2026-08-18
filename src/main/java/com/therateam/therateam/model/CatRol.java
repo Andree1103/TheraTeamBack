@@ -16,6 +16,11 @@ public class CatRol {
     private String nombre;
     private Boolean activo;
 
+    /** Dato sensible: si es true, los usuarios con este rol ven el celular de los pacientes —
+     *  false por defecto, se activa por rol desde Seguridad > Roles (no es un permiso por módulo). */
+    @Column(name = "pacientes_ver_telefono")
+    private Boolean pacientesVerTelefono;
+
     /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
      * lectura/navegación; crear/editar/eliminar son flags independientes (las lecturas de datos

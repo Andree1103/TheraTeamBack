@@ -2,7 +2,10 @@ package com.therateam.therateam.controller;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import com.therateam.therateam.config.SecurityUtils;
 import com.therateam.therateam.model.Paciente;
+import com.therateam.therateam.model.Usuario;
+import com.therateam.therateam.repository.UsuarioRepository;
 import com.therateam.therateam.service.PacienteService;
 import io.jsonwebtoken.Claims;
 import jakarta.validation.Valid;
@@ -15,12 +18,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/api/pacientes")
 @RequiredArgsConstructor
 public class PacienteController {
 
     private final PacienteService service;
+    private final UsuarioRepository usuarioRepository;
 
     /**
      * Si el usuario tiene `citasSoloPropias=true` (terapeuta restringido a sus propias citas),
@@ -33,6 +42,35 @@ public class PacienteController {
         return terapeutaId != null ? terapeutaId.longValue() : -1L;
     }
 
+    /** El celular es un dato sensible: por defecto ningún usuario lo ve, salvo que se le active
+     *  el permiso puntual desde Seguridad > Usuarios. */
+    private Paciente redactarTelefono(Paciente p) {
+        if (p != null && !SecurityUtils.puedeVerTelefonoPacientes()) p.setTelefono(null);
+        return p;
+    }
+
+    /** Resuelve `usuarioCreacionId` → "Nombre Apellido" para toda una página de una sola pasada
+     *  (evita N+1: una consulta por cada id distinto, no una por fila). */
+    private Page<Paciente> enriquecerCreador(Page<Paciente> page) {
+        List<Long> ids = page.getContent().stream()
+                .map(Paciente::getUsuarioCreacionId).filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) return page;
+        Map<Long, String> nombres = usuarioRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Usuario::getId, u -> u.getNombre() + " " + u.getApellido()));
+        page.getContent().forEach(p -> {
+            if (p.getUsuarioCreacionId() != null) p.setUsuarioCreacionNombre(nombres.get(p.getUsuarioCreacionId()));
+        });
+        return page;
+    }
+
+    private Paciente enriquecerCreador(Paciente p) {
+        if (p != null && p.getUsuarioCreacionId() != null) {
+            usuarioRepository.findById(p.getUsuarioCreacionId())
+                    .ifPresent(u -> p.setUsuarioCreacionNombre(u.getNombre() + " " + u.getApellido()));
+        }
+        return p;
+    }
+
     /** GET /api/pacientes?page=0&size=20&sort=apellido,asc&nombre=x&dni=x&correo=x&sedeId=1&activo=true */
     @GetMapping
     public Page<Paciente> getAll(@PageableDefault(size = 20, sort = "apellido") Pageable pageable,
@@ -42,19 +80,24 @@ public class PacienteController {
                                   @RequestParam(required = false) Long sedeId,
                                   @RequestParam(required = false) Boolean activo,
                                   Authentication auth) {
-        return service.findAllPaged(pageable, nombre, dni, correo, sedeId, activo, restriccionTerapeutaId(auth));
+        Page<Paciente> page = service.findAllPaged(pageable, nombre, dni, correo, sedeId, activo, restriccionTerapeutaId(auth))
+                .map(this::redactarTelefono);
+        return enriquecerCreador(page);
     }
 
     /** GET /api/pacientes/adelantos?page=0&size=20&nombre=x — pacientes con saldo a favor. */
     @GetMapping("/adelantos")
     public Page<Paciente> getAdelantos(@PageableDefault(size = 20) Pageable pageable,
                                         @RequestParam(required = false) String nombre) {
-        return service.findConSaldoAFavorPaged(pageable, nombre);
+        Page<Paciente> page = service.findConSaldoAFavorPaged(pageable, nombre).map(this::redactarTelefono);
+        return enriquecerCreador(page);
     }
 
     @GetMapping("/buscar")
     public ResponseEntity<Paciente> buscarPorDni(@RequestParam String dni) {
         return service.findByDni(dni)
+                .map(this::redactarTelefono)
+                .map(this::enriquecerCreador)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -62,6 +105,8 @@ public class PacienteController {
     @GetMapping("/{id}")
     public ResponseEntity<Paciente> getById(@PathVariable Long id) {
         return service.findById(id)
+                .map(this::redactarTelefono)
+                .map(this::enriquecerCreador)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

@@ -2,6 +2,7 @@ package com.therateam.therateam.controller;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import com.therateam.therateam.config.SecurityUtils;
 import com.therateam.therateam.dto.CitaConPacienteRequest;
 import com.therateam.therateam.dto.CitaDTO;
 import com.therateam.therateam.dto.CitaRapidaRequest;
@@ -41,11 +42,18 @@ public class CitaController {
         return terapeutaId != null ? terapeutaId.longValue() : -1L;
     }
 
+    /** El celular es un dato sensible: por defecto ningún usuario lo ve, salvo que se le active
+     *  el permiso puntual desde Seguridad > Usuarios. */
+    private CitaDTO redactarTelefono(CitaDTO dto) {
+        if (dto != null && !SecurityUtils.puedeVerTelefonoPacientes()) dto.setPacienteTelefono(null);
+        return dto;
+    }
+
     /** GET /api/citas?page=0&size=20&sort=fechaInicio,desc */
     @GetMapping
     public Page<CitaDTO> getAll(@PageableDefault(size = 20, sort = "fechaInicio") Pageable pageable,
                                  Authentication auth) {
-        return service.findAllPaged(pageable, restriccionTerapeutaId(auth));
+        return service.findAllPaged(pageable, restriccionTerapeutaId(auth)).map(this::redactarTelefono);
     }
 
     /**
@@ -64,7 +72,7 @@ public class CitaController {
             Authentication auth
     ) {
         return service.findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, restriccionTerapeutaId(auth),
-                estadoKey, paciente, areaId, pageable);
+                estadoKey, paciente, areaId, pageable).map(this::redactarTelefono);
     }
 
     @GetMapping("/{id}")
@@ -74,6 +82,7 @@ public class CitaController {
                     Long restriccion = restriccionTerapeutaId(auth);
                     return restriccion == null || restriccion.equals(dto.getTerapeutaId());
                 })
+                .map(this::redactarTelefono)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -81,7 +90,13 @@ public class CitaController {
     /** GET /api/citas/paciente/{id} — historial de citas de un paciente */
     @GetMapping("/paciente/{pacienteId}")
     public List<CitaDTO> getByPaciente(@PathVariable Long pacienteId) {
-        return service.findByPaciente(pacienteId);
+        return service.findByPaciente(pacienteId).stream().map(this::redactarTelefono).toList();
+    }
+
+    /** GET /api/citas/lote/{loteMasivoId}/resumen — cuántas citas de un lote de "citas masivas" faltan/se atendieron. */
+    @GetMapping("/lote/{loteMasivoId}/resumen")
+    public com.therateam.therateam.dto.LoteResumenDTO getResumenLote(@PathVariable String loteMasivoId) {
+        return service.resumenLote(loteMasivoId);
     }
 
     @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR') and hasAuthority('CITAS_PUEDE_CREAR')")
@@ -132,5 +147,21 @@ public class CitaController {
         return service.delete(id)
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.notFound().build();
+    }
+
+    /**
+     * POST /api/citas/{id}/anular?devolucion=SALDO|DINERO&metodoId=1 — cancela la cita y
+     * resuelve el dinero: SALDO (default) lo deja como saldo a favor del paciente; DINERO
+     * registra una devolución auditable (el pago original nunca se borra). `metodoId` es
+     * opcional — solo aplica a citas de paquete cuando no se puede inferir del historial.
+     */
+    @PreAuthorize("hasAuthority('MODULO_CITAS_ELIMINAR')")
+    @PostMapping("/{id}/anular")
+    public ResponseEntity<CitaDTO> anular(@PathVariable Long id,
+                                           @RequestParam(defaultValue = "SALDO") String devolucion,
+                                           @RequestParam(required = false) Long metodoId) {
+        return service.anular(id, devolucion, metodoId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 }

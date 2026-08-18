@@ -14,10 +14,16 @@ import java.util.List;
 public interface PagoRepository extends JpaRepository<Pago, Long> {
     List<Pago> findByTratamientoId(Long tratamientoId);
     List<Pago> findByPacienteId(Long pacienteId);
+    List<Pago> findByCitaId(Long citaId);
 
-    /** Ingresos del día agrupados por método de pago — para el cierre de caja. */
+    /**
+     * Ingresos del día agrupados por método de pago — para el cierre de caja. Una devolución
+     * (esDevolucion=true) es plata que SALIÓ, así que resta en vez de sumar — de lo contrario
+     * una cita anulada con devolución de dinero infla la caja como si fuera un cobro más.
+     */
     @Query("""
-        SELECT m.id, m.nombre, SUM(pg.montoRecibido)
+        SELECT m.id, m.nombre,
+               SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END)
         FROM Pago pg
         LEFT JOIN pg.metodo m
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
@@ -38,7 +44,9 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
-            pg.referencia, pg.notas, pg.fechaPago, pg.createdAt
+            pg.referencia, pg.notas, pg.fechaPago, pg.createdAt,
+            pg.concepto, pg.esAdicional, pg.esDevolucion,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId)
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
@@ -62,7 +70,9 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
-            pg.referencia, pg.notas, pg.fechaPago, pg.createdAt
+            pg.referencia, pg.notas, pg.fechaPago, pg.createdAt,
+            pg.concepto, pg.esAdicional, pg.esDevolucion,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId)
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
@@ -100,7 +110,9 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
-            pg.referencia, pg.notas, pg.fechaPago, pg.createdAt
+            pg.referencia, pg.notas, pg.fechaPago, pg.createdAt,
+            pg.concepto, pg.esAdicional, pg.esDevolucion,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId)
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
@@ -121,7 +133,9 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
-            pg.referencia, pg.notas, pg.fechaPago, pg.createdAt
+            pg.referencia, pg.notas, pg.fechaPago, pg.createdAt,
+            pg.concepto, pg.esAdicional, pg.esDevolucion,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId)
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t

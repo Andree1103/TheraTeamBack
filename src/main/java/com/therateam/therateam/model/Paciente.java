@@ -29,6 +29,15 @@ public class Paciente {
     private String correo;
     private LocalDate fechaNacimiento;
 
+    /** Solo obligatorios cuando el paciente es menor de 18 años (ver PacienteService) — quien
+     *  responde por el paciente ante el consultorio. */
+    @Column(name = "dni_apoderado")
+    private String dniApoderado;
+    @Column(name = "nombre_apoderado")
+    private String nombreApoderado;
+    @Column(name = "celular_apoderado")
+    private String celularApoderado;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "origen_id")
     private CatOrigen origen;
@@ -61,6 +70,10 @@ public class Paciente {
     private Long usuarioCreacionId;
     @Column(name = "idusuario_modificacion")
     private Long usuarioModificacionId;
+
+    /** Nombre de quien creó el registro — resuelto en el controller a partir de usuarioCreacionId, no persistido. */
+    @Transient
+    private String usuarioCreacionNombre;
 
     @PrePersist
     void onCreate() {

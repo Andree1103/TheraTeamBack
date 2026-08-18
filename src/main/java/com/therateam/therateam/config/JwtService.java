@@ -62,6 +62,7 @@ public class JwtService {
                 .claim("terapeutaId", terapeutaId)
                 .claim("citasSoloPropias", Boolean.TRUE.equals(usuario.getCitasSoloPropias()))
                 .claim("citasPuedeCrear", !Boolean.FALSE.equals(usuario.getCitasPuedeCrear()))
+                .claim("pacientesVerTelefono", usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPacientesVerTelefono()))
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key())

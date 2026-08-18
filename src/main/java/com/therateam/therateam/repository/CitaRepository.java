@@ -21,22 +21,22 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
      * (ej. CANCELADA), las eliminadas lógicamente, y opcionalmente excluyendo la propia cita
      * (para updates) — una cita eliminada no debe seguir bloqueando ese horario.
      */
-    List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
-            Long terapeutaId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey, Long excludeId);
+    List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndIdNotAndEliminadoFalse(
+            Long terapeutaId, LocalDateTime fechaFin, LocalDateTime fechaInicio, List<String> estadoKeys, Long excludeId);
 
-    List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
-            Long terapeutaId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey);
+    List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
+            Long terapeutaId, LocalDateTime fechaFin, LocalDateTime fechaInicio, List<String> estadoKeys);
 
     /**
      * Citas del paciente que se solapan con [fechaInicio, fechaFin) — un paciente no puede estar
      * en dos sesiones a la vez, sin importar el terapeuta. Mismo patrón que la validación de
      * disponibilidad del terapeuta, pero del lado del paciente.
      */
-    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndIdNotAndEliminadoFalse(
-            Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey, Long excludeId);
+    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndIdNotAndEliminadoFalse(
+            Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, List<String> estadoKeys, Long excludeId);
 
-    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotAndEliminadoFalse(
-            Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, String estadoKey);
+    List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
+            Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, List<String> estadoKeys);
 
     /**
      * Proyección liviana para listados: trae SOLO las columnas de CitaDTO en vez de la entidad
@@ -54,7 +54,12 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             m.key, t.notas,
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
             ep.key, ep.nombre, ep.color,
-            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre
+            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre,
+            (SELECT m2.nombre FROM Pago pg2 LEFT JOIN pg2.metodo m2
+             WHERE pg2.id = (SELECT MAX(pg3.id) FROM Pago pg3
+                              WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)),
+            c.loteMasivoId,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -81,7 +86,12 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             m.key, t.notas,
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
             ep.key, ep.nombre, ep.color,
-            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre
+            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre,
+            (SELECT m2.nombre FROM Pago pg2 LEFT JOIN pg2.metodo m2
+             WHERE pg2.id = (SELECT MAX(pg3.id) FROM Pago pg3
+                              WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)),
+            c.loteMasivoId,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -125,7 +135,12 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             m.key, t.notas,
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
             ep.key, ep.nombre, ep.color,
-            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre
+            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre,
+            (SELECT m2.nombre FROM Pago pg2 LEFT JOIN pg2.metodo m2
+             WHERE pg2.id = (SELECT MAX(pg3.id) FROM Pago pg3
+                              WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)),
+            c.loteMasivoId,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -141,6 +156,9 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         """)
     java.util.Optional<CitaDTO> findByIdProjected(@Param("id") Long id);
 
+    /** Todas las citas de un lote de "citas masivas" — para contar cuántas faltan/se atendieron. */
+    List<Cita> findByLoteMasivoIdAndEliminadoFalse(String loteMasivoId);
+
     /** Historial de citas de un paciente (directo, ya no depende de sesión/tratamiento). */
     @Query("""
         SELECT new com.therateam.therateam.dto.CitaDTO(
@@ -153,7 +171,12 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             m.key, t.notas,
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
             ep.key, ep.nombre, ep.color,
-            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre
+            c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre,
+            (SELECT m2.nombre FROM Pago pg2 LEFT JOIN pg2.metodo m2
+             WHERE pg2.id = (SELECT MAX(pg3.id) FROM Pago pg3
+                              WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)),
+            c.loteMasivoId,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
         )
         FROM Cita c
         LEFT JOIN c.sesion s

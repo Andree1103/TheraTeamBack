@@ -40,4 +40,11 @@ public class CitaConPacienteRequest {
      * se marcan PAGADA automáticamente, sin generar un pago nuevo.
      */
     private Long tratamientoId;
+
+    /**
+     * Agrupador liviano opcional para "citas masivas": el caller genera un id (ej. un UUID) y lo
+     * manda igual en todas las citas del mismo lote — no crea ningún Tratamiento ni toca el
+     * catálogo de Paquetes, solo permite luego contar cuántas del grupo faltan/ya se atendieron.
+     */
+    private String loteMasivoId;
 }

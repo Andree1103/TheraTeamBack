@@ -45,6 +45,20 @@ public class Pago {
     private String notas;
     private LocalDateTime fechaPago;
 
+    /** Concepto libre para cobros adicionales (ej. "Material adicional", "Consulta extra"). */
+    private String concepto;
+    /** true = cobro adicional: ingreso aparte que no descuenta ninguna deuda ni genera saldo a favor. */
+    @Column(name = "es_adicional")
+    private Boolean esAdicional = false;
+
+    /** true = este registro es la devolución de otro pago (no un cobro) — para auditoría, nunca
+     *  se borra el pago original: se revierte su efecto y se deja este registro como evidencia. */
+    @Column(name = "es_devolucion")
+    private Boolean esDevolucion = false;
+    /** Id del Pago que este registro devuelve — solo se llena cuando esDevolucion = true. */
+    @Column(name = "pago_origen_id")
+    private Long pagoOrigenId;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "registrado_por")
     private Usuario registradoPor;
@@ -60,6 +74,8 @@ public class Pago {
         if (fechaPago == null) fechaPago = LocalDateTime.now();
         if (saldoGenerado == null) saldoGenerado = BigDecimal.ZERO;
         if (saldoPrevio == null) saldoPrevio = BigDecimal.ZERO;
+        if (esAdicional == null) esAdicional = false;
+        if (esDevolucion == null) esDevolucion = false;
         usuarioCreacionId = SecurityUtils.currentUserId();
     }
 }

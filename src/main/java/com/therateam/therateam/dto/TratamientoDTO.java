@@ -46,6 +46,7 @@ public class TratamientoDTO {
     private LocalDate fechaInicio;
     private String notas;
     private LocalDateTime createdAt;
+    private String usuarioCreacionNombre;
 
     /** Constructor usado por la proyección JPQL (SELECT new ...) — el orden debe calzar con la query. */
     public TratamientoDTO(Long id, String nombre,
@@ -57,7 +58,8 @@ public class TratamientoDTO {
                            Integer totalSesiones, Integer sesionesAtendidas, Integer sesionesPendientes,
                            BigDecimal montoTotal, BigDecimal precioPorSesion,
                            BigDecimal totalCobrado, BigDecimal saldoAFavor,
-                           LocalDate fechaInicio, String notas, LocalDateTime createdAt) {
+                           LocalDate fechaInicio, String notas, LocalDateTime createdAt,
+                           String usuarioCreacionNombre) {
         this.id = id;
         this.nombre = nombre;
         this.pacienteId = pacienteId;
@@ -82,5 +84,6 @@ public class TratamientoDTO {
         this.fechaInicio = fechaInicio;
         this.notas = notas;
         this.createdAt = createdAt;
+        this.usuarioCreacionNombre = usuarioCreacionNombre;
     }
 }

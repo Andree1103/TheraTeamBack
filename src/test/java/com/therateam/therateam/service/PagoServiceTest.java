@@ -7,6 +7,7 @@ import com.therateam.therateam.model.Pago;
 import com.therateam.therateam.model.Sesion;
 import com.therateam.therateam.model.Tratamiento;
 import com.therateam.therateam.repository.CatEstadoPagoCitaRepository;
+import com.therateam.therateam.repository.CatMetodoPagoRepository;
 import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PacienteRepository;
 import com.therateam.therateam.repository.PagoRepository;
@@ -43,13 +44,14 @@ class PagoServiceTest {
     @Mock private TratamientoRepository tratamientoRepository;
     @Mock private SesionRepository sesionRepository;
     @Mock private PacienteRepository pacienteRepository;
+    @Mock private CatMetodoPagoRepository catMetodoPagoRepository;
 
     private PagoService service;
 
     @BeforeEach
     void setUp() {
         service = new PagoService(repository, citaRepository, catEstadoPagoCitaRepository,
-                tratamientoRepository, sesionRepository, pacienteRepository);
+                tratamientoRepository, sesionRepository, pacienteRepository, catMetodoPagoRepository);
         lenient().when(repository.save(any(Pago.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(pacienteRepository.save(any(Paciente.class))).thenAnswer(inv -> inv.getArgument(0));
     }

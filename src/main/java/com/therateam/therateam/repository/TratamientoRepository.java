@@ -33,7 +33,8 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
             t.montoTotal, t.precioPorSesion, t.totalCobrado, p.saldoAFavor,
-            t.fechaInicio, t.notas, t.createdAt
+            t.fechaInicio, t.notas, t.createdAt,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = t.usuarioCreacionId)
         )
         FROM Tratamiento t
         LEFT JOIN t.paciente p
@@ -61,7 +62,8 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
             t.montoTotal, t.precioPorSesion, t.totalCobrado, p.saldoAFavor,
-            t.fechaInicio, t.notas, t.createdAt
+            t.fechaInicio, t.notas, t.createdAt,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = t.usuarioCreacionId)
         )
         FROM Tratamiento t
         LEFT JOIN t.paciente p
@@ -82,7 +84,8 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
             es.key, es.nombre, es.colorHex,
             t.totalSesiones, t.sesionesAtendidas, t.sesionesPendientes,
             t.montoTotal, t.precioPorSesion, t.totalCobrado, p.saldoAFavor,
-            t.fechaInicio, t.notas, t.createdAt
+            t.fechaInicio, t.notas, t.createdAt,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = t.usuarioCreacionId)
         )
         FROM Tratamiento t
         LEFT JOIN t.paciente p
