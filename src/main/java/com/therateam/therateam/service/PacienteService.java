@@ -62,6 +62,12 @@ public class PacienteService {
     /** Crea el paciente y, junto con él, su cuenta de acceso (rol PACIENTE, password = su DNI). */
     @Transactional
     public Paciente save(Paciente paciente) {
+        // Obligatoria al crear: sin ella no hay forma de saber si es menor, y la exigencia del
+        // apoderado se esquivaba dejando el campo vacio. Solo aplica al alta -- editar un
+        // paciente antiguo que quedo sin fecha sigue permitido (ver update).
+        if (paciente.getFechaNacimiento() == null) {
+            throw new IllegalArgumentException("La fecha de nacimiento es obligatoria.");
+        }
         validarApoderadoSiEsMenor(paciente);
         if (paciente.getSede() == null) {
             sedeRepository.findFirstByActivoTrueOrderByIdAsc().ifPresent(paciente::setSede);
@@ -101,9 +107,10 @@ public class PacienteService {
     }
 
     /**
-     * Si se conoce la fecha de nacimiento y el paciente es menor de 18, los datos del apoderado
-     * (quien responde por él) son obligatorios. Si no se conoce la fecha de nacimiento (ej. alta
-     * rápida desde Citas, que no la pide) no se puede determinar la edad — no bloquea ese flujo.
+     * Si el paciente es menor de 18, los datos del apoderado (quien responde por él) son
+     * obligatorios. Al crear, la fecha siempre viene (save() la exige). Al editar puede faltar en
+     * pacientes antiguos, cargados antes de que fuera obligatoria: ahí no se puede determinar la
+     * edad y no se bloquea, para no dejar esos registros imposibles de corregir.
      */
     private void validarApoderadoSiEsMenor(Paciente p) {
         if (p.getFechaNacimiento() == null) return;

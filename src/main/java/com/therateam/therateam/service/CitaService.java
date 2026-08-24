@@ -568,6 +568,12 @@ public class CitaService {
         nuevo.setApellido(input.getApellido());
         nuevo.setTelefono(input.getTelefono());
         nuevo.setCorreo(input.getCorreo());
+        // El alta rapida desde Citas tambien recoge fecha de nacimiento y apoderado: sin esto,
+        // registrar un menor desde la agenda saltaba la validacion que si aplica en Pacientes.
+        nuevo.setFechaNacimiento(input.getFechaNacimiento());
+        nuevo.setDniApoderado(input.getDniApoderado());
+        nuevo.setNombreApoderado(input.getNombreApoderado());
+        nuevo.setCelularApoderado(input.getCelularApoderado());
         // Pasa por PacienteService (no el repository directo) para que también se le cree su cuenta de acceso.
         return pacienteService.save(nuevo);
     }
