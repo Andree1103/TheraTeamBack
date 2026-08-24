@@ -113,9 +113,52 @@ public class AtencionClinicaService {
         });
     }
 
+    /**
+     * Borra la atención y deshace todo lo que hizo registrar(): devuelve la cita a PROGRAMADA, la
+     * sesión a pendiente y descuenta la sesión atendida del paquete.
+     *
+     * Antes solo hacía deleteById, lo que fallaba con FK huérfana en cuanto la atención tenía
+     * métricas, y en el mejor caso dejaba la cita ASISTIDA sin atención y el paquete descuadrado.
+     */
+    @Transactional
     public boolean delete(Long id) {
-        if (!repository.existsById(id)) return false;
-        repository.deleteById(id);
+        AtencionClinica atencion = repository.findById(id).orElse(null);
+        if (atencion == null) return false;
+
+        Cita cita = atencion.getCita();
+
+        // Las métricas no tienen cascade desde AtencionClinica: van primero o el flush falla.
+        metricaRepository.deleteByAtencionId(id);
+        repository.delete(atencion);
+
+        if (cita != null) {
+            catEstadoCitaRepository.findByKey("PROGRAMADA").ifPresent(est -> {
+                cita.setEstado(est);
+                citaRepository.save(cita);
+            });
+
+            Sesion sesion = cita.getSesion();
+            if (sesion != null) {
+                estadoSesionInicial().ifPresent(est -> {
+                    sesion.setEstado(est);
+                    sesionRepository.save(sesion);
+                });
+
+                Tratamiento tratamiento = sesion.getTratamiento();
+                if (tratamiento != null) {
+                    int actual = tratamiento.getSesionesAtendidas() != null ? tratamiento.getSesionesAtendidas() : 0;
+                    // Con piso en 0: si el contador ya venía descuadrado, restar a ciegas lo dejaría negativo.
+                    tratamiento.setSesionesAtendidas(Math.max(0, actual - 1));
+                    tratamientoRepository.save(tratamiento);
+                }
+            }
+        }
         return true;
+    }
+
+    /** El catálogo real no tiene ninguna key "PENDIENTE" — la sesión nace y vuelve a PENDIENTE_AGENDAR. */
+    private Optional<CatEstadoSesion> estadoSesionInicial() {
+        return catEstadoSesionRepository.findByKey("PENDIENTE_AGENDAR")
+                .or(() -> catEstadoSesionRepository.findByKey("PENDIENTE"));
     }
 }
