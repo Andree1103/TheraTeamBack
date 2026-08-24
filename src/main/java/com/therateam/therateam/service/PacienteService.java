@@ -1,5 +1,6 @@
 package com.therateam.therateam.service;
 
+import com.therateam.therateam.config.SecurityUtils;
 import com.therateam.therateam.model.CatRol;
 import com.therateam.therateam.model.Paciente;
 import com.therateam.therateam.model.Usuario;
@@ -78,7 +79,12 @@ public class PacienteService {
             existing.setNombre(data.getNombre());
             existing.setApellido(data.getApellido());
             existing.setDni(data.getDni());
-            existing.setTelefono(data.getTelefono());
+            // A quien no puede ver teléfonos se le manda null en el GET, así que su formulario lo
+            // devuelve vacío: guardarlo tal cual borraba el número real al editar cualquier otro
+            // campo. Solo lo escribe quien de verdad lo está viendo.
+            if (SecurityUtils.puedeVerTelefonoPacientes()) {
+                existing.setTelefono(data.getTelefono());
+            }
             existing.setCorreo(data.getCorreo());
             existing.setFechaNacimiento(data.getFechaNacimiento());
             existing.setDniApoderado(data.getDniApoderado());

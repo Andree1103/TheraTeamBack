@@ -37,6 +37,8 @@ public class CitaService {
     private final CatModalidadRepository catModalidadRepository;
     private final CatEstadoPagoCitaRepository catEstadoPagoCitaRepository;
     private final PagoRepository pagoRepository;
+    private final AtencionClinicaRepository atencionClinicaRepository;
+    private final AtencionMetricaRepository atencionMetricaRepository;
     private final CatMetodoPagoRepository catMetodoPagoRepository;
     private final DisponibilidadService disponibilidadService;
     private final PagoService pagoService;
@@ -106,6 +108,9 @@ public class CitaService {
 
     public Cita save(Cita cita) { return citaRepository.save(cita); }
 
+    /** Transaccional porque al salir de ASISTIDA se borra la atención y se reajusta el paquete:
+     *  o pasa todo, o no pasa nada. */
+    @Transactional
     public Optional<Cita> update(Long id, Cita data) {
         return citaRepository.findById(id).map(e -> {
             Long terapeutaOriginalId = e.getTerapeuta() != null ? e.getTerapeuta().getId() : null;
@@ -128,6 +133,13 @@ public class CitaService {
             e.setFechaInicio(data.getFechaInicio());
             e.setFechaFin(data.getFechaFin());
             e.setDuracionMinutos(data.getDuracionMinutos());
+            // Salir de ASISTIDA deshace lo que hizo el registro de la atención: si no, la atención
+            // quedaba huérfana (visible en el perfil del paciente) y la sesión seguía contando como
+            // atendida en su paquete.
+            String estadoNuevoKey = data.getEstado() != null ? data.getEstado().getKey() : null;
+            if ("ASISTIDA".equals(estadoOriginalKey) && !"ASISTIDA".equals(estadoNuevoKey)) {
+                revertirAtencion(e);
+            }
             e.setEstado(data.getEstado());
             e.setLinkVideollamada(data.getLinkVideollamada());
             e.setNotasPrevias(data.getNotasPrevias());
@@ -325,8 +337,7 @@ public class CitaService {
                     + sesiones.size() + "/" + totalSesiones + ").");
         }
 
-        CatEstadoSesion estadoSesion = catEstadoSesionRepository.findByKey("PENDIENTE")
-                .orElseGet(() -> catEstadoSesionRepository.findAll().stream().findFirst().orElse(null));
+        CatEstadoSesion estadoSesion = estadoSesionInicial();
         Sesion nueva = new Sesion();
         nueva.setTratamiento(tratamiento);
         nueva.setNumero(sesiones.size() + 1);
@@ -500,6 +511,49 @@ public class CitaService {
         CatEstadoPagoCita estadoPago = catEstadoPagoCitaRepository.findByKey(keyEstadoPago).orElse(null);
         cita.setEstadoPago(estadoPago);
         return citaRepository.save(cita);
+    }
+
+    /**
+     * Deshace el registro de la atención de una cita que deja de estar ASISTIDA: borra la atención,
+     * devuelve su sesión a PENDIENTE y descuenta la sesión atendida del paquete. Es la operación
+     * inversa exacta de AtencionClinicaService.registrar().
+     */
+    /**
+     * Estado con el que nace una sesión y al que vuelve si se deshace su atención. El catálogo real
+     * usa "PENDIENTE_AGENDAR" (no existe ninguna key "PENDIENTE"), y el fallback cubre instalaciones
+     * con otro catálogo cargado.
+     */
+    private CatEstadoSesion estadoSesionInicial() {
+        return catEstadoSesionRepository.findByKey("PENDIENTE_AGENDAR")
+                .or(() -> catEstadoSesionRepository.findByKey("PENDIENTE"))
+                .orElseGet(() -> catEstadoSesionRepository.findAll().stream().findFirst().orElse(null));
+    }
+
+    private void revertirAtencion(Cita cita) {
+        atencionClinicaRepository.findByCitaId(cita.getId()).ifPresent(atencion -> {
+            // Las métricas no tienen cascade desde AtencionClinica, así que hay que borrarlas
+            // primero o el flush falla por FK huérfana — mismo orden que usa registrar().
+            atencionMetricaRepository.deleteByAtencionId(atencion.getId());
+            atencionClinicaRepository.delete(atencion);
+        });
+
+        Sesion sesion = cita.getSesion();
+        if (sesion == null) return;
+
+        CatEstadoSesion estadoInicial = estadoSesionInicial();
+        if (estadoInicial != null) {
+            sesion.setEstado(estadoInicial);
+            sesionRepository.save(sesion);
+        }
+
+        Tratamiento tratamiento = sesion.getTratamiento();
+        if (tratamiento != null) {
+            int actual = tratamiento.getSesionesAtendidas() != null ? tratamiento.getSesionesAtendidas() : 0;
+            // Nunca por debajo de 0: si el contador ya estaba descuadrado, restar a ciegas lo
+            // dejaría en negativo y el paquete mostraría sesiones imposibles.
+            tratamiento.setSesionesAtendidas(Math.max(0, actual - 1));
+            tratamientoRepository.save(tratamiento);
+        }
     }
 
     private Paciente buscarOCrearPaciente(PacienteInput input) {
