@@ -45,13 +45,17 @@ class PagoServiceTest {
     @Mock private SesionRepository sesionRepository;
     @Mock private PacienteRepository pacienteRepository;
     @Mock private CatMetodoPagoRepository catMetodoPagoRepository;
+    @Mock private SaldoMovimientoService saldoMovimientoService;
+    @Mock private VentaService ventaService;
 
     private PagoService service;
 
     @BeforeEach
     void setUp() {
         service = new PagoService(repository, citaRepository, catEstadoPagoCitaRepository,
-                tratamientoRepository, sesionRepository, pacienteRepository, catMetodoPagoRepository);
+                tratamientoRepository, sesionRepository, pacienteRepository, catMetodoPagoRepository,
+                saldoMovimientoService, ventaService);
+        lenient().when(ventaService.preparar(any())).thenReturn(java.util.List.of());
         lenient().when(repository.save(any(Pago.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(pacienteRepository.save(any(Paciente.class))).thenAnswer(inv -> inv.getArgument(0));
     }

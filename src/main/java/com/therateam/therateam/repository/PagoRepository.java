@@ -25,12 +25,56 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT m.id, m.nombre,
                SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END)
         FROM Pago pg
+        LEFT JOIN pg.cita cc
+        LEFT JOIN cc.terapeuta terc
+        LEFT JOIN terc.usuario uc2
+        LEFT JOIN cc.tipoTerapia ttc
         LEFT JOIN pg.metodo m
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
         GROUP BY m.id, m.nombre
         """)
     List<Object[]> sumMontoPorMetodoEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
                                                  @Param("finDia") LocalDateTime finDia);
+
+    /*
+     * Los tres conceptos del cierre de caja. Van como consultas separadas y no como un
+     * GROUP BY sobre un CASE: la clasificación depende de si el pago tiene líneas de venta,
+     * y meter un EXISTS dentro del CASE (y repetirlo en el GROUP BY) es frágil. Las tres son
+     * excluyentes y su suma tiene que dar el mismo total que sumMontoPorMetodoEntreFechas.
+     *
+     * En las tres, una devolución resta en vez de sumar, igual que en el total por método.
+     */
+
+    /** Terapias y paquetes: todo cobro que no es "adicional" (incluye los adelantos a cuenta). */
+    @Query("""
+        SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
+        FROM Pago pg
+        WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND pg.esAdicional = false
+        """)
+    BigDecimal sumTerapiasEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
+                                       @Param("finDia") LocalDateTime finDia);
+
+    /** Productos: el cobro adicional llegó con líneas de venta del catálogo. */
+    @Query("""
+        SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
+        FROM Pago pg
+        WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND EXISTS (SELECT 1 FROM VentaItem vi WHERE vi.pagoId = pg.id)
+        """)
+    BigDecimal sumProductosEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
+                                        @Param("finDia") LocalDateTime finDia);
+
+    /** Otros cobros: adicionales de concepto libre, sin producto detrás (ej. "copia de informe"). */
+    @Query("""
+        SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
+        FROM Pago pg
+        WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND pg.esAdicional = true
+          AND NOT EXISTS (SELECT 1 FROM VentaItem vi WHERE vi.pagoId = pg.id)
+        """)
+    BigDecimal sumOtrosCobrosEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
+                                          @Param("finDia") LocalDateTime finDia);
 
     /**
      * Proyección liviana para listados: evita la cadena EAGER completa de Pago.tratamiento
@@ -40,7 +84,9 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     @Query("""
         SELECT new com.therateam.therateam.dto.PagoDTO(
             pg.id,
-            t.id, t.nombre, CONCAT(u.nombre, ' ', u.apellido), tt.nombre,
+            t.id, t.nombre,
+            COALESCE(CONCAT(u.nombre, ' ', u.apellido), CONCAT(uc2.nombre, ' ', uc2.apellido)),
+            COALESCE(tt.nombre, ttc.nombre),
             p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
@@ -54,6 +100,10 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         LEFT JOIN ter.usuario u
         LEFT JOIN t.tipoTerapia tt
         LEFT JOIN pg.paciente p
+        LEFT JOIN pg.cita cc
+        LEFT JOIN cc.terapeuta terc
+        LEFT JOIN terc.usuario uc2
+        LEFT JOIN cc.tipoTerapia ttc
         LEFT JOIN pg.metodo m
         ORDER BY pg.fechaPago DESC
         """)
@@ -66,7 +116,9 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     @Query("""
         SELECT new com.therateam.therateam.dto.PagoDTO(
             pg.id,
-            t.id, t.nombre, CONCAT(u.nombre, ' ', u.apellido), tt.nombre,
+            t.id, t.nombre,
+            COALESCE(CONCAT(u.nombre, ' ', u.apellido), CONCAT(uc2.nombre, ' ', uc2.apellido)),
+            COALESCE(tt.nombre, ttc.nombre),
             p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
@@ -80,6 +132,10 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         LEFT JOIN ter.usuario u
         LEFT JOIN t.tipoTerapia tt
         LEFT JOIN pg.paciente p
+        LEFT JOIN pg.cita cc
+        LEFT JOIN cc.terapeuta terc
+        LEFT JOIN terc.usuario uc2
+        LEFT JOIN cc.tipoTerapia ttc
         LEFT JOIN pg.metodo m
         WHERE (CAST(:paciente AS string) IS NULL
                OR LOWER(CONCAT(p.nombre, ' ', p.apellido)) LIKE LOWER(CONCAT('%', CAST(:paciente AS string), '%')))
@@ -106,7 +162,9 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     @Query("""
         SELECT new com.therateam.therateam.dto.PagoDTO(
             pg.id,
-            t.id, t.nombre, CONCAT(u.nombre, ' ', u.apellido), tt.nombre,
+            t.id, t.nombre,
+            COALESCE(CONCAT(u.nombre, ' ', u.apellido), CONCAT(uc2.nombre, ' ', uc2.apellido)),
+            COALESCE(tt.nombre, ttc.nombre),
             p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
@@ -120,6 +178,10 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         LEFT JOIN ter.usuario u
         LEFT JOIN t.tipoTerapia tt
         LEFT JOIN pg.paciente p
+        LEFT JOIN pg.cita cc
+        LEFT JOIN cc.terapeuta terc
+        LEFT JOIN terc.usuario uc2
+        LEFT JOIN cc.tipoTerapia ttc
         LEFT JOIN pg.metodo m
         WHERE p.id = :pacienteId
         ORDER BY pg.fechaPago DESC
@@ -129,7 +191,9 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     @Query("""
         SELECT new com.therateam.therateam.dto.PagoDTO(
             pg.id,
-            t.id, t.nombre, CONCAT(u.nombre, ' ', u.apellido), tt.nombre,
+            t.id, t.nombre,
+            COALESCE(CONCAT(u.nombre, ' ', u.apellido), CONCAT(uc2.nombre, ' ', uc2.apellido)),
+            COALESCE(tt.nombre, ttc.nombre),
             p.id, p.nombre, p.apellido, p.dni,
             m.id, m.nombre,
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
@@ -143,6 +207,10 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         LEFT JOIN ter.usuario u
         LEFT JOIN t.tipoTerapia tt
         LEFT JOIN pg.paciente p
+        LEFT JOIN pg.cita cc
+        LEFT JOIN cc.terapeuta terc
+        LEFT JOIN terc.usuario uc2
+        LEFT JOIN cc.tipoTerapia ttc
         LEFT JOIN pg.metodo m
         WHERE t.id = :tratamientoId
         ORDER BY pg.fechaPago DESC

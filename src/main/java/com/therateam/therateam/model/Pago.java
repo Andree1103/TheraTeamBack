@@ -59,6 +59,14 @@ public class Pago {
     @Column(name = "pago_origen_id")
     private Long pagoOrigenId;
 
+    /**
+     * Solo de entrada/salida: las lineas de productos de una venta ({productoId, cantidad}).
+     * No se persiste aca — cada linea vive en venta_items apuntando a este pago. El precio se
+     * toma del catalogo al vender, nunca de lo que mande el cliente.
+     */
+    @Transient
+    private java.util.List<VentaItem> items;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "registrado_por")
     private Usuario registradoPor;

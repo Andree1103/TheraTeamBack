@@ -75,6 +75,17 @@ public class Paciente {
     @Transient
     private String usuarioCreacionNombre;
 
+    // Ultimo movimiento del saldo a favor. No se persisten: los rellena el controlador para
+    // el reporte de Adelantos, que necesita explicar de donde salio el saldo.
+    @Transient
+    private String saldoUltimoMotivo;
+
+    @Transient
+    private String saldoUltimoTerapeuta;
+
+    @Transient
+    private java.time.LocalDateTime saldoUltimaFecha;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now(); if (activo == null) activo = true;

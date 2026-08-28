@@ -42,6 +42,7 @@ public class CitaService {
     private final CatMetodoPagoRepository catMetodoPagoRepository;
     private final DisponibilidadService disponibilidadService;
     private final PagoService pagoService;
+    private final SaldoMovimientoService saldoMovimientoService;
 
     /** Claves reales de "cancelada" en el catálogo — no existe una única key "CANCELADA". */
     private static final List<String> ESTADOS_CANCELADOS = List.of("CANCELADA_PACIENTE", "CANCELADA_CLINICA");
@@ -133,6 +134,17 @@ public class CitaService {
             e.setFechaInicio(data.getFechaInicio());
             e.setFechaFin(data.getFechaFin());
             e.setDuracionMinutos(data.getDuracionMinutos());
+
+            // Cambiar el tipo de terapia solo mientras no haya atencion registrada: una vez
+            // atendida, la nota clinica quedo asociada a ese tipo. Antes ni siquiera se aplicaba,
+            // asi que la edicion respondia OK y el cambio se perdia.
+            if (data.getTipoTerapiaKey() != null && !data.getTipoTerapiaKey().isBlank()) {
+                if ("ASISTIDA".equals(estadoOriginalKey)) {
+                    throw new IllegalArgumentException(
+                            "No se puede cambiar el tipo de terapia de una cita ya atendida.");
+                }
+                tipoTerapiaRepository.findByKey(data.getTipoTerapiaKey()).ifPresent(e::setTipoTerapia);
+            }
             // Salir de ASISTIDA deshace lo que hizo el registro de la atención: si no, la atención
             // quedaba huérfana (visible en el perfil del paciente) y la sesión seguía contando como
             // atendida en su paquete.
@@ -283,7 +295,9 @@ public class CitaService {
                     pagoService.crearDevolucionManual(cita.getPaciente(), tratamiento, cita, montoDeEstaSesion, metodoResuelto,
                             "Devolución por anulación de sesión" + numeroSesion + " del paquete " + tratamiento.getNombre());
                 } else {
-                    sumarSaldoAFavor(cita.getPaciente(), montoDeEstaSesion);
+                    String numeroSesion = cita.getSesion().getNumero() != null ? " #" + cita.getSesion().getNumero() : "";
+                    sumarSaldoAFavor(cita.getPaciente(), montoDeEstaSesion,
+                            "Anulación de sesión" + numeroSesion + " del paquete " + tratamiento.getNombre(), cita);
                 }
             }
             cita.setMontoPagado(BigDecimal.ZERO);
@@ -307,11 +321,17 @@ public class CitaService {
     }
 
     private void sumarSaldoAFavor(Paciente paciente, BigDecimal monto) {
+        sumarSaldoAFavor(paciente, monto, "Anulación de cita", null);
+    }
+
+    private void sumarSaldoAFavor(Paciente paciente, BigDecimal monto, String motivo, Cita citaOrigen) {
         if (paciente == null || paciente.getId() == null || monto.compareTo(BigDecimal.ZERO) <= 0) return;
         pacienteRepository.findById(paciente.getId()).ifPresent(p -> {
             BigDecimal saldo = p.getSaldoAFavor() != null ? p.getSaldoAFavor() : BigDecimal.ZERO;
-            p.setSaldoAFavor(saldo.add(monto));
+            BigDecimal nuevo = saldo.add(monto);
+            p.setSaldoAFavor(nuevo);
             pacienteRepository.save(p);
+            saldoMovimientoService.registrar(p, monto, nuevo, motivo, citaOrigen, null);
         });
     }
 
@@ -633,9 +653,18 @@ public class CitaService {
                     req.getLoteMasivoId(), req.getTotalSesionesPlan()));
         }
 
-        if (req.getPaciente2() != null) {
-            Paciente p2 = buscarOCrearPaciente(req.getPaciente2());
-            resultado.add(crearCitaParaPaciente(p2, terapeuta, tipoTerapia, estadoCita, modalidad,
+        // Acompañantes: paciente2 (compatibilidad) mas la lista, que es lo que usa el front
+        // para los tipos con cupo mayor a dos. Cada uno genera su propia cita en el mismo
+        // horario; validarDisponibilidad se encarga de no pasarse del maxPacientes del tipo.
+        List<PacienteInput> acompanantes = new java.util.ArrayList<>();
+        if (req.getPaciente2() != null) acompanantes.add(req.getPaciente2());
+        if (req.getPacientesAdicionales() != null) acompanantes.addAll(req.getPacientesAdicionales());
+
+        for (PacienteInput input : acompanantes) {
+            if (input == null) continue;
+            Paciente acompanante = buscarOCrearPaciente(input);
+            if (acompanante == null) continue;
+            resultado.add(crearCitaParaPaciente(acompanante, terapeuta, tipoTerapia, estadoCita, modalidad,
                     req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
                     req.getPrecioPorSesion(), null, tipoRecurrencia, null, null));
         }

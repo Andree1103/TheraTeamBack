@@ -27,6 +27,11 @@ public class Cita {
     @JoinColumn(name = "tipo_terapia_id")
     private TipoTerapia tipoTerapia;
 
+    /** Solo de entrada: el front manda la key del tipo al editar y el service la resuelve.
+     *  No se persiste — la relacion real es tipoTerapia. */
+    @Transient
+    private String tipoTerapiaKey;
+
     /** Precio acordado para esta cita puntual (si no está ligada a un paquete que ya trae su propio precio). */
     private BigDecimal precio;
 

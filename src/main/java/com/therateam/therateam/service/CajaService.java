@@ -7,6 +7,8 @@ import com.therateam.therateam.model.Configuracion;
 import com.therateam.therateam.repository.CierreCajaRepository;
 import com.therateam.therateam.repository.ConfiguracionRepository;
 import com.therateam.therateam.repository.PagoRepository;
+import com.therateam.therateam.repository.VentaItemRepository;
+import com.therateam.therateam.dto.VentaResumenDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -38,6 +40,7 @@ public class CajaService {
     private final CierreCajaRepository cierreCajaRepository;
     private final PagoRepository pagoRepository;
     private final ConfiguracionRepository configuracionRepository;
+    private final VentaItemRepository ventaItemRepository;
 
     /** Hora de corte entre el turno 1 y el turno 2 — editable desde Configuraciones (clave CAJA_HORA_CORTE_TURNO1). */
     public LocalTime horaCorte() {
@@ -80,6 +83,19 @@ public class CajaService {
                 .map(CajaResumenDTO.IngresoMetodo::getMonto)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // El mismo dinero, cortado por concepto en vez de por método de pago. Son excluyentes
+        // entre sí y su suma da totalIngresos — dos vistas del mismo total, no dos totales.
+        List<CajaResumenDTO.IngresoConcepto> ingresosPorConcepto = new java.util.ArrayList<>();
+        agregarConcepto(ingresosPorConcepto, "TERAPIAS", "Terapias y paquetes",
+                pagoRepository.sumTerapiasEntreFechas(inicioRango, finRango));
+        agregarConcepto(ingresosPorConcepto, "PRODUCTOS", "Productos",
+                pagoRepository.sumProductosEntreFechas(inicioRango, finRango));
+        agregarConcepto(ingresosPorConcepto, "OTROS", "Otros cobros",
+                pagoRepository.sumOtrosCobrosEntreFechas(inicioRango, finRango));
+
+        // Qué se vendió en el turno: el detalle detrás de la fila "Productos".
+        List<VentaResumenDTO> ventasPorProducto = ventaItemRepository.resumenPorProducto(inicioRango, finRango);
+
         BigDecimal saldoInicial = cierreCajaRepository.findAnteriores(fecha, turno, PageRequest.of(0, 1))
                 .stream().findFirst().map(CierreCaja::getSaldoFinal).orElse(BigDecimal.ZERO);
 
@@ -94,8 +110,17 @@ public class CajaService {
         BigDecimal saldoFinal = saldoInicial.add(totalIngresos).subtract(egresos);
 
         return new CajaResumenDTO(fecha, turno, corte.format(DateTimeFormatter.ofPattern("HH:mm")),
-                saldoInicial, ingresosPorMetodo, totalIngresos,
+                saldoInicial, ingresosPorMetodo, ingresosPorConcepto, ventasPorProducto, totalIngresos,
                 egresos, comentario, saldoFinal, cerrado, cerradoPorNombre);
+    }
+
+    /** Solo se lista el concepto que movió plata: un cero cada día es ruido en el cierre. */
+    private void agregarConcepto(List<CajaResumenDTO.IngresoConcepto> destino,
+                                  String clave, String nombre, BigDecimal monto) {
+        BigDecimal m = monto != null ? monto : BigDecimal.ZERO;
+        if (m.compareTo(BigDecimal.ZERO) != 0) {
+            destino.add(new CajaResumenDTO.IngresoConcepto(clave, nombre, m));
+        }
     }
 
     @Transactional

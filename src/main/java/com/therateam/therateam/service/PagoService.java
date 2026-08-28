@@ -4,8 +4,10 @@ import com.therateam.therateam.dto.PagoDTO;
 import com.therateam.therateam.model.Cita;
 import com.therateam.therateam.model.Paciente;
 import com.therateam.therateam.model.Pago;
+import com.therateam.therateam.model.Terapeuta;
 import com.therateam.therateam.model.Sesion;
 import com.therateam.therateam.model.Tratamiento;
+import com.therateam.therateam.model.VentaItem;
 import com.therateam.therateam.model.CatMetodoPago;
 import com.therateam.therateam.repository.CatEstadoPagoCitaRepository;
 import com.therateam.therateam.repository.CatMetodoPagoRepository;
@@ -36,6 +38,8 @@ public class PagoService {
     private final SesionRepository sesionRepository;
     private final PacienteRepository pacienteRepository;
     private final CatMetodoPagoRepository catMetodoPagoRepository;
+    private final SaldoMovimientoService saldoMovimientoService;
+    private final VentaService ventaService;
 
     public List<PagoDTO> findAll() { return repository.findAllProjected(); }
 
@@ -69,12 +73,32 @@ public class PagoService {
 
         // Cobro adicional (ej. "se atendió y se le vendió algo más"): es ingreso aparte, no paga
         // ninguna deuda de cita/paquete ni genera saldo a favor — se registra tal cual se cobró.
+        // Es también la vía de la venta de productos: si vienen items, el monto y el concepto
+        // los pone el catálogo, no lo que se haya tecleado.
         if (Boolean.TRUE.equals(p.getEsAdicional())) {
-            BigDecimal monto = p.getMontoRecibido() != null ? p.getMontoRecibido() : BigDecimal.ZERO;
+            // Antes de guardar nada: si falta stock, esto lanza y no queda un pago huérfano.
+            List<VentaItem> itemsVenta = ventaService.preparar(p.getItems());
+
+            BigDecimal monto;
+            if (!itemsVenta.isEmpty()) {
+                monto = ventaService.total(itemsVenta);
+                if (p.getConcepto() == null || p.getConcepto().isBlank()) {
+                    p.setConcepto("Venta: " + ventaService.describir(itemsVenta));
+                }
+            } else {
+                monto = p.getMontoRecibido() != null ? p.getMontoRecibido() : BigDecimal.ZERO;
+            }
+
+            p.setMontoRecibido(monto);
             p.setMontoAplicado(monto);
             p.setSaldoGenerado(BigDecimal.ZERO);
             p.setSaldoPrevio(paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO);
-            return repository.save(p);
+            Pago guardado = repository.save(p);
+
+            // Después del save: las líneas necesitan el id del pago para colgarse de él.
+            ventaService.confirmar(guardado.getId(), itemsVenta);
+            guardado.setItems(itemsVenta);
+            return guardado;
         }
 
         BigDecimal montoRecibido  = p.getMontoRecibido() != null ? p.getMontoRecibido() : BigDecimal.ZERO;
@@ -121,6 +145,7 @@ public class PagoService {
         p.setMontoAplicado(montoAplicado);
         p.setSaldoGenerado(saldoGenerado);
 
+        BigDecimal saldoAnterior = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
         paciente.setSaldoAFavor(saldoGenerado);
         pacienteRepository.save(paciente);
 
@@ -154,6 +179,29 @@ public class PagoService {
         }
 
         Pago saved = repository.save(p);
+
+        // Despues del save: el movimiento referencia al Pago, y antes de persistirlo seria
+        // una instancia transitoria (Hibernate lo rechaza al hacer flush).
+        // El terapeuta sale de la cita cargada de BD o, si el pago es contra un paquete sin
+        // cita puntual, del propio paquete. saved.getCita() no sirve: es el stub del request.
+        Terapeuta terapeutaDelSaldo = citaAsociada != null ? citaAsociada.getTerapeuta()
+                : (tratamiento != null ? tratamiento.getTerapeuta() : null);
+        // El concepto nombra la cita o el paquete: sin eso, el historial dice "se uso saldo"
+        // pero no en que, que es justo lo que hay que poder responder.
+        String motivoSaldo;
+        if (citaAsociada == null && tratamiento == null) {
+            // Adelanto a cuenta: el paciente deja dinero sin nada que cubrir todavia. No es
+            // "pagar de mas", asi que decirlo asi confundia en el estado de cuenta.
+            motivoSaldo = "Adelanto a cuenta"
+                    + (p.getNotas() != null && !p.getNotas().isBlank() ? " — " + p.getNotas() : "");
+        } else {
+            String concepto = describirOrigen(citaAsociada, tratamiento);
+            motivoSaldo = saldoGenerado.compareTo(saldoAnterior) > 0
+                    ? "Pagó de más en " + concepto + " — el excedente queda a favor"
+                    : "Saldo usado en " + concepto;
+        }
+        saldoMovimientoService.registrar(paciente, saldoGenerado.subtract(saldoAnterior), saldoGenerado,
+                motivoSaldo, citaAsociada, saved, terapeutaDelSaldo);
 
         // La rama de adelantos (arriba) ya dejó el estado_pago correcto según lo cobrado; para el
         // resto de casos (cita sin precio propio, ej. legado) se conserva el comportamiento previo:
@@ -218,13 +266,34 @@ public class PagoService {
         return "SIN_PAGO";
     }
 
+    /** Texto corto que identifica contra que se movio el saldo, para el historial de Adelantos. */
+    private String describirOrigen(Cita cita, Tratamiento tratamiento) {
+        if (cita != null) {
+            String tipo = cita.getTipoTerapia() != null ? cita.getTipoTerapia().getNombre() : "cita";
+            String cuando = cita.getFechaInicio() != null
+                    ? cita.getFechaInicio().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                    : "";
+            return tipo + (cuando.isEmpty() ? "" : " del " + cuando);
+        }
+        if (tratamiento != null) {
+            return "el paquete " + (tratamiento.getNombre() != null ? tratamiento.getNombre() : "#" + tratamiento.getId());
+        }
+        return "un adelanto sin cita asociada";
+    }
+
     /** Revierte el efecto de un pago sobre el saldo del paciente y el tratamiento/cita (usado al eliminar). */
     private void revertir(Pago p) {
+        // Si el pago era una venta, los productos volvieron al estante: el contador debe subir.
+        if (p.getId() != null) ventaService.devolverStock(p.getId());
         if (p.getPaciente() != null && p.getPaciente().getId() != null) {
             pacienteRepository.findById(p.getPaciente().getId()).ifPresent(paciente -> {
                 // El saldo a favor que dejó este pago se retira; el saldo previo a este pago se restaura.
-                paciente.setSaldoAFavor(p.getSaldoPrevio() != null ? p.getSaldoPrevio() : BigDecimal.ZERO);
+                BigDecimal antes = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
+                BigDecimal restaurado = p.getSaldoPrevio() != null ? p.getSaldoPrevio() : BigDecimal.ZERO;
+                paciente.setSaldoAFavor(restaurado);
                 pacienteRepository.save(paciente);
+                saldoMovimientoService.registrar(paciente, restaurado.subtract(antes), restaurado,
+                        "Se eliminó el pago #" + p.getId() + " — saldo restaurado", p.getCita(), null);
             });
         }
         if (p.getTratamiento() != null && p.getTratamiento().getId() != null) {
@@ -372,8 +441,11 @@ public class PagoService {
             if (montoAplicado.compareTo(BigDecimal.ZERO) > 0 && p.getPaciente() != null && p.getPaciente().getId() != null) {
                 pacienteRepository.findById(p.getPaciente().getId()).ifPresent(paciente -> {
                     BigDecimal saldo = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
-                    paciente.setSaldoAFavor(saldo.add(montoAplicado));
+                    BigDecimal nuevo = saldo.add(montoAplicado);
+                    paciente.setSaldoAFavor(nuevo);
                     pacienteRepository.save(paciente);
+                    saldoMovimientoService.registrar(paciente, montoAplicado, nuevo,
+                            "Anulación de cita — el pago quedó a favor", p.getCita(), p);
                 });
             }
         });

@@ -11,8 +11,13 @@ public class CitaConPacienteRequest {
 
     private PacienteInput paciente;
 
-    /** Segundo paciente — solo para sesiones tipo multipaciente (puede ser null) */
+    /** Segundo paciente — solo para sesiones tipo multipaciente (puede ser null).
+     *  Se mantiene por compatibilidad; lo nuevo llega en pacientesAdicionales. */
     private PacienteInput paciente2;
+
+    /** Acompañantes a partir del segundo, para tipos con maxPacientes > 2
+     *  (ej. Estimulación Temprana admite 5 en el mismo horario). */
+    private java.util.List<PacienteInput> pacientesAdicionales;
 
     private String terapeutaNombre;
     private String tipoKey;

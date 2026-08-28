@@ -30,6 +30,7 @@ public class PacienteController {
 
     private final PacienteService service;
     private final UsuarioRepository usuarioRepository;
+    private final com.therateam.therateam.service.SaldoMovimientoService saldoMovimientoService;
 
     /**
      * Si el usuario tiene `citasSoloPropias=true` (terapeuta restringido a sus propias citas),
@@ -90,7 +91,36 @@ public class PacienteController {
     public Page<Paciente> getAdelantos(@PageableDefault(size = 20) Pageable pageable,
                                         @RequestParam(required = false) String nombre) {
         Page<Paciente> page = service.findConSaldoAFavorPaged(pageable, nombre).map(this::redactarTelefono);
-        return enriquecerCreador(page);
+        return enriquecerUltimoMovimiento(enriquecerCreador(page));
+    }
+
+    /** GET /api/pacientes/{id}/saldo-movimientos — historial completo del saldo a favor. */
+    @GetMapping("/{id}/saldo-movimientos")
+    public List<com.therateam.therateam.dto.SaldoMovimientoDTO> saldoMovimientos(@PathVariable Long id) {
+        return saldoMovimientoService.historial(id);
+    }
+
+    /**
+     * Rellena, para cada paciente de la pagina, el motivo y el terapeuta de su ultimo movimiento
+     * de saldo. Una sola consulta para toda la pagina, no una por paciente.
+     */
+    private Page<Paciente> enriquecerUltimoMovimiento(Page<Paciente> page) {
+        List<Long> ids = page.getContent().stream().map(Paciente::getId)
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) return page;
+        Map<Long, com.therateam.therateam.dto.SaldoMovimientoDTO> ultimos = new java.util.HashMap<>();
+        // La consulta viene ordenada de mas reciente a mas antiguo: el primero de cada paciente gana.
+        for (var m : saldoMovimientoService.ultimosDe(ids)) {
+            ultimos.putIfAbsent(m.getPacienteId(), m);
+        }
+        page.getContent().forEach(p -> {
+            var m = ultimos.get(p.getId());
+            if (m == null) return;
+            p.setSaldoUltimoMotivo(m.getMotivo());
+            p.setSaldoUltimaFecha(m.getFecha());
+            p.setSaldoUltimoTerapeuta(m.getTerapeutaNombre());
+        });
+        return page;
     }
 
     @GetMapping("/buscar")
