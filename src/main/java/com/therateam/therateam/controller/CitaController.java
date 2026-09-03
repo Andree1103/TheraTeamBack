@@ -57,7 +57,7 @@ public class CitaController {
     }
 
     /**
-     * GET /api/citas/filtro?fechaInicio=...&fechaFin=...&terapeuta=Ana&estadoKey=ASISTIDA&paciente=Juan&areaId=1&page=0&size=50
+     * GET /api/citas/filtro?fechaInicio=...&fechaFin=...&terapeuta=Ana&estadoKey=ASISTIDA&paciente=Juan&areaId=1&metodoPagoId=4&page=0&size=50
      * `estadoKey`/`paciente`/`areaId` los usa sobre todo el módulo de Atenciones (citas ASISTIDA), pero sirven para cualquier filtro combinado.
      */
     @GetMapping("/filtro")
@@ -68,11 +68,12 @@ public class CitaController {
             @RequestParam(required = false) String estadoKey,
             @RequestParam(required = false) String paciente,
             @RequestParam(required = false) Long areaId,
+            @RequestParam(required = false) Long metodoPagoId,
             @PageableDefault(size = 50) Pageable pageable,
             Authentication auth
     ) {
         return service.findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, restriccionTerapeutaId(auth),
-                estadoKey, paciente, areaId, pageable).map(this::redactarTelefono);
+                estadoKey, paciente, areaId, metodoPagoId, pageable).map(this::redactarTelefono);
     }
 
     @GetMapping("/{id}")

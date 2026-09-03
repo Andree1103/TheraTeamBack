@@ -119,6 +119,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
           AND (CAST(:paciente AS string) IS NULL
                OR LOWER(CONCAT(p.nombre, ' ', p.apellido)) LIKE LOWER(CONCAT('%', CAST(:paciente AS string), '%')))
           AND (CAST(:areaId AS long) IS NULL OR a.id = :areaId)
+          AND (CAST(:metodoPagoId AS long) IS NULL OR mUlt.id = :metodoPagoId)
         """)
     Page<CitaDTO> findByFiltrosProjected(@Param("fechaInicio") LocalDateTime fechaInicio,
                                           @Param("fechaFin") LocalDateTime fechaFin,
@@ -127,6 +128,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
                                           @Param("estadoKey") String estadoKey,
                                           @Param("paciente") String paciente,
                                           @Param("areaId") Long areaId,
+                                          @Param("metodoPagoId") Long metodoPagoId,
                                           Pageable pageable);
 
     /** Proyección liviana para un solo registro (GET /{id}). */

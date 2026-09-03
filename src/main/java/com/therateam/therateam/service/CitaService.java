@@ -55,16 +55,16 @@ public class CitaService {
     /** `terapeutaIdRestriccion` acota los resultados a un solo terapeuta (citasSoloPropias=true); null = sin restricción. */
     public Page<CitaDTO> findAllPaged(Pageable pageable, Long terapeutaIdRestriccion) {
         if (terapeutaIdRestriccion == null) return citaRepository.findAllProjected(pageable);
-        return citaRepository.findByFiltrosProjected(null, null, null, terapeutaIdRestriccion, null, null, null, pageable);
+        return citaRepository.findByFiltrosProjected(null, null, null, terapeutaIdRestriccion, null, null, null, null, pageable);
     }
 
     public Page<CitaDTO> findByFiltrosPaged(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta,
                                              Long terapeutaIdRestriccion, String estadoKey, String paciente,
-                                             Long areaId, Pageable pageable) {
+                                             Long areaId, Long metodoPagoId, Pageable pageable) {
         String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
         String pacienteFiltro = (paciente == null || paciente.isBlank()) ? null : paciente.toLowerCase();
         return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, terapeutaIdRestriccion,
-                estadoKey, pacienteFiltro, areaId, traducirOrden(pageable));
+                estadoKey, pacienteFiltro, areaId, metodoPagoId, traducirOrden(pageable));
     }
 
     /**
@@ -83,7 +83,7 @@ public class CitaService {
 
     public List<CitaDTO> findByFiltros(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta) {
         String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
-        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, null, null, null, null,
+        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, null, null, null, null, null,
                 org.springframework.data.domain.Pageable.unpaged()).getContent();
     }
 
