@@ -164,4 +164,19 @@ public class CitaController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
+
+    /**
+     * PUT /api/citas/{id}/correccion — corrige una cita YA ATENDIDA (terapeuta, tipo de terapia,
+     * precio, método del pago). Solo ADMIN: la edición normal prohíbe estos cambios en una cita
+     * atendida y esa regla se mantiene; esto es la excepción para arreglar cargas mal hechas,
+     * y queda registrada en el historial de la cita.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/{id}/correccion")
+    public ResponseEntity<CitaDTO> corregirAtencion(@PathVariable Long id,
+                                                     @RequestBody com.therateam.therateam.dto.CorreccionAtencionRequest req) {
+        return service.corregirAtencion(id, req)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
 }

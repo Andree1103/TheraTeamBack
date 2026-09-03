@@ -43,6 +43,7 @@ public class CitaService {
     private final DisponibilidadService disponibilidadService;
     private final PagoService pagoService;
     private final SaldoMovimientoService saldoMovimientoService;
+    private final com.therateam.therateam.repository.CitaHistorialRepository citaHistorialRepository;
 
     /** Claves reales de "cancelada" en el catálogo — no existe una única key "CANCELADA". */
     private static final List<String> ESTADOS_CANCELADOS = List.of("CANCELADA_PACIENTE", "CANCELADA_CLINICA");
@@ -119,6 +120,101 @@ public class CitaService {
         if (activas >= totalPlaneado) {
             throw new IllegalArgumentException("Este grupo ya tiene todas sus citas creadas (" + activas + "/" + totalPlaneado + ").");
         }
+    }
+
+    /**
+     * Corrección administrativa de una cita ya atendida. La edición normal prohíbe cambiar el
+     * terapeuta, el tipo de terapia o el horario de una cita ASISTIDA, y esa regla se mantiene:
+     * esto es la excepción explícita para quien tiene rol ADMIN, pensada para arreglar cargas
+     * mal hechas, no para reescribir la agenda.
+     *
+     * No se revalida la disponibilidad del terapeuta: la sesión ya ocurrió, chequear cupos y
+     * solapes contra un horario pasado bloquearía correcciones legítimas sin proteger nada.
+     *
+     * Todo lo que cambia queda en cita_historial con el motivo.
+     */
+    @Transactional
+    public Optional<CitaDTO> corregirAtencion(Long id, com.therateam.therateam.dto.CorreccionAtencionRequest req) {
+        return citaRepository.findById(id).map(cita -> {
+            String estadoKey = cita.getEstado() != null ? cita.getEstado().getKey() : null;
+            if (!"ASISTIDA".equals(estadoKey)) {
+                throw new IllegalArgumentException(
+                        "Esta corrección es solo para citas ya atendidas. Para el resto, usa la edición normal de la cita.");
+            }
+
+            List<String> cambios = new java.util.ArrayList<>();
+
+            if (req.getTerapeutaId() != null
+                    && (cita.getTerapeuta() == null || !req.getTerapeutaId().equals(cita.getTerapeuta().getId()))) {
+                Terapeuta nuevo = terapeutaRepository.findById(req.getTerapeutaId())
+                        .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado: " + req.getTerapeutaId()));
+                cambios.add("terapeuta: " + nombreTerapeuta(cita.getTerapeuta()) + " -> " + nombreTerapeuta(nuevo));
+                cita.setTerapeuta(nuevo);
+            }
+
+            if (req.getTipoTerapiaKey() != null && !req.getTipoTerapiaKey().isBlank()) {
+                TipoTerapia nuevo = tipoTerapiaRepository.findByKey(req.getTipoTerapiaKey())
+                        .orElseThrow(() -> new IllegalArgumentException("Tipo de terapia no encontrado: " + req.getTipoTerapiaKey()));
+                String actual = cita.getTipoTerapia() != null ? cita.getTipoTerapia().getKey() : null;
+                if (!nuevo.getKey().equals(actual)) {
+                    cambios.add("tipo de terapia: " + (actual != null ? actual : "-") + " -> " + nuevo.getKey());
+                    cita.setTipoTerapia(nuevo);
+                }
+            }
+
+            if (req.getPrecio() != null && req.getPrecio().compareTo(cita.getPrecio() != null ? cita.getPrecio() : BigDecimal.ZERO) != 0) {
+                cambios.add("precio: " + cita.getPrecio() + " -> " + req.getPrecio());
+                cita.setPrecio(req.getPrecio());
+                // El estado de pago se deriva del precio: si cambia el precio y no se recalcula,
+                // una cita cobrada entera puede quedar figurando como PAGADA debiendo plata.
+                BigDecimal pagado = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
+                String keyPago = pagado.compareTo(req.getPrecio()) >= 0 ? "PAGADA"
+                        : (pagado.compareTo(BigDecimal.ZERO) > 0 ? "PARCIAL" : "SIN_PAGO");
+                catEstadoPagoCitaRepository.findByKey(keyPago).ifPresent(cita::setEstadoPago);
+            }
+
+            if (req.getMetodoPagoId() != null) {
+                Pago ultimo = pagoRepository.findByCitaId(cita.getId()).stream()
+                        .filter(pg -> !Boolean.TRUE.equals(pg.getEsDevolucion()) && !Boolean.TRUE.equals(pg.getEsAdicional()))
+                        .max(java.util.Comparator.comparing(Pago::getId))
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Esta cita no tiene ningún pago registrado, así que no hay método de pago que corregir."));
+                CatMetodoPago metodo = catMetodoPagoRepository.findById(req.getMetodoPagoId())
+                        .orElseThrow(() -> new IllegalArgumentException("Método de pago no encontrado: " + req.getMetodoPagoId()));
+                String actual = ultimo.getMetodo() != null ? ultimo.getMetodo().getNombre() : "-";
+                if (!metodo.getId().equals(ultimo.getMetodo() != null ? ultimo.getMetodo().getId() : null)) {
+                    cambios.add("método de pago: " + actual + " -> " + metodo.getNombre());
+                    ultimo.setMetodo(metodo);
+                    pagoRepository.save(ultimo);
+                }
+            }
+
+            if (cambios.isEmpty()) return toDTO(cita);
+
+            Cita guardada = citaRepository.save(cita);
+            registrarCorreccion(guardada, cambios, req.getMotivo());
+            return toDTO(guardada);
+        });
+    }
+
+    private String nombreTerapeuta(Terapeuta t) {
+        if (t == null || t.getUsuario() == null) return "-";
+        return t.getUsuario().getNombre() + " " + t.getUsuario().getApellido();
+    }
+
+    /** Deja la corrección en el historial de la cita — el estado no cambia, cambia el contenido. */
+    private void registrarCorreccion(Cita cita, List<String> cambios, String motivo) {
+        CitaHistorial h = new CitaHistorial();
+        h.setCita(cita);
+        h.setEstadoAnterior(cita.getEstado());
+        h.setEstadoNuevo(cita.getEstado());
+        h.setFechaAnterior(cita.getFechaInicio());
+        h.setFechaNueva(cita.getFechaInicio());
+        h.setCanal("CORRECCION");
+        String detalle = "Corrección de atención — " + String.join("; ", cambios);
+        if (motivo != null && !motivo.isBlank()) detalle += " · Motivo: " + motivo.trim();
+        h.setMotivo(detalle.length() > 500 ? detalle.substring(0, 500) : detalle);
+        citaHistorialRepository.save(h);
     }
 
     public Cita save(Cita cita) { return citaRepository.save(cita); }
