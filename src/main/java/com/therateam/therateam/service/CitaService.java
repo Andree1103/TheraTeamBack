@@ -63,7 +63,21 @@ public class CitaService {
         String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
         String pacienteFiltro = (paciente == null || paciente.isBlank()) ? null : paciente.toLowerCase();
         return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, terapeutaIdRestriccion,
-                estadoKey, pacienteFiltro, areaId, pageable);
+                estadoKey, pacienteFiltro, areaId, traducirOrden(pageable));
+    }
+
+    /**
+     * El front pide ordenar por "metodoPago", que no es un campo de Cita sino del ultimo Pago:
+     * se traduce al alias del JOIN de la consulta (mUlt). El resto de ordenes son rutas reales
+     * de la entidad y pasan tal cual.
+     */
+    private org.springframework.data.domain.Pageable traducirOrden(org.springframework.data.domain.Pageable pageable) {
+        if (pageable == null || pageable.getSort().isUnsorted()) return pageable;
+        org.springframework.data.domain.Sort traducido = org.springframework.data.domain.Sort.by(
+                pageable.getSort().stream()
+                        .map(o -> "metodoPago".equals(o.getProperty()) ? new org.springframework.data.domain.Sort.Order(o.getDirection(), "mUlt.nombre") : o)
+                        .toList());
+        return org.springframework.data.domain.PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), traducido);
     }
 
     public List<CitaDTO> findByFiltros(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta) {

@@ -75,6 +75,11 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         """)
     Page<CitaDTO> findAllProjected(Pageable pageable);
 
+    /**
+     * El medio de pago sale de un JOIN con alias (mUlt) y no de una subconsulta en el SELECT
+     * como en las demas proyecciones: asi la columna se puede ORDENAR desde Atenciones
+     * (Pageable no puede ordenar por el resultado de una subconsulta correlacionada).
+     */
     @Query("""
         SELECT new com.therateam.therateam.dto.CitaDTO(
             c.id, s.id, s.numero, t.totalSesiones,
@@ -87,9 +92,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             c.notasPrevias, c.linkVideollamada, c.recordatorioEnviado,
             ep.key, ep.nombre, ep.color,
             c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre,
-            (SELECT m2.nombre FROM Pago pg2 LEFT JOIN pg2.metodo m2
-             WHERE pg2.id = (SELECT MAX(pg3.id) FROM Pago pg3
-                              WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)),
+            mUlt.nombre,
             c.loteMasivoId,
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
         )
@@ -99,6 +102,9 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.paciente p
         LEFT JOIN c.tipoTerapia tt
         LEFT JOIN tt.area a
+        LEFT JOIN Pago pgUlt ON pgUlt.id = (SELECT MAX(pg3.id) FROM Pago pg3
+                                             WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)
+        LEFT JOIN pgUlt.metodo mUlt
         LEFT JOIN c.terapeuta ter
         LEFT JOIN ter.usuario u
         LEFT JOIN c.estado e
