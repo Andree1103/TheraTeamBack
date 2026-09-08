@@ -269,7 +269,22 @@ public class CitaService {
             if (data.getTipoRecurrencia() != null) e.setTipoRecurrencia(data.getTipoRecurrencia());
             // Solo el frontend manda este campo cuando el usuario logueado es ADMIN (gate en el
             // modal de edición) — si no viene, se preserva el precio ya guardado.
-            if (data.getPrecio() != null) e.setPrecio(data.getPrecio());
+            //
+            // El estado de pago se DERIVA del precio, asi que cambiarlo sin recalcular dejaba
+            // citas mintiendo: subir el precio de una cita ya cobrada la mantenia en PAGADA
+            // aunque quedara saldo por cobrar, y la deuda desaparecia de la vista.
+            if (data.getPrecio() != null) {
+                BigDecimal precioAnterior = e.getPrecio();
+                e.setPrecio(data.getPrecio());
+                boolean precioCambio = precioAnterior == null
+                        || precioAnterior.compareTo(data.getPrecio()) != 0;
+                if (precioCambio && data.getPrecio().compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal pagado = e.getMontoPagado() != null ? e.getMontoPagado() : BigDecimal.ZERO;
+                    String keyPago = pagado.compareTo(data.getPrecio()) >= 0 ? "PAGADA"
+                            : (pagado.compareTo(BigDecimal.ZERO) > 0 ? "PARCIAL" : "SIN_PAGO");
+                    catEstadoPagoCitaRepository.findByKey(keyPago).ifPresent(e::setEstadoPago);
+                }
+            }
 
             TipoTerapia tipo = e.getTipoTerapia() != null ? e.getTipoTerapia()
                     : (e.getSesion() != null && e.getSesion().getTratamiento() != null

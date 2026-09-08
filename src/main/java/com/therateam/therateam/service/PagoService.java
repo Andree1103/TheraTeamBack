@@ -109,6 +109,23 @@ public class PagoService {
         if (p.getCita() != null && p.getCita().getId() != null) {
             citaAsociada = citaRepository.findById(p.getCita().getId()).orElse(null);
         }
+        // Una cita suelta puede no tener precio: solo se le pone uno automatico a los tipos de
+        // terapia que tienen precio_recomendado cargado, y ademas solo un admin puede fijarlo al
+        // crearla. Sin esto, cobrarla era imposible — el monto entraba como saldo a favor y la
+        // cita quedaba SIN_PAGO para siempre.
+        //
+        // Regla: si no tiene precio, el monto que se cobra PASA A SER su precio. Es la unica
+        // lectura razonable (no hay otro total contra el cual comparar) y deja la cita cuadrada:
+        // precio = pagado = PAGADA. Si despues resulta que era un adelanto, se corrige el precio
+        // desde la cita y el estado de pago se recalcula solo.
+        if (citaAsociada != null
+                && (p.getTratamiento() == null || p.getTratamiento().getId() == null)
+                && (citaAsociada.getPrecio() == null || citaAsociada.getPrecio().compareTo(BigDecimal.ZERO) <= 0)
+                && montoRecibido.compareTo(BigDecimal.ZERO) > 0) {
+            citaAsociada.setPrecio(montoRecibido);
+            citaRepository.save(citaAsociada);
+        }
+
         boolean citaConPrecioDeReferencia = citaAsociada != null && citaAsociada.getPrecio() != null
                 && citaAsociada.getPrecio().compareTo(BigDecimal.ZERO) > 0;
 
