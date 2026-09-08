@@ -19,4 +19,6 @@ public class LoginResponse {
     private Long terapeutaId;
     private boolean citasSoloPropias;
     private boolean citasPuedeCrear;
+    /** Viene del ROL: si es false, el front no muestra los botones de "Exportar Excel". */
+    private boolean puedeExportar;
 }

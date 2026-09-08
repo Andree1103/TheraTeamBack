@@ -72,6 +72,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PACIENTES_VER_TELEFONO"));
                 }
 
+                // Tambien por ROL: quien puede descargar la data en Excel.
+                Boolean puedeExportar = claims.get("puedeExportar", Boolean.class);
+                if (Boolean.TRUE.equals(puedeExportar)) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_EXPORTAR"));
+                }
+
                 var authentication = new UsernamePasswordAuthenticationToken(
                         claims.getSubject(), null, authorities);
                 // Los claims completos (terapeutaId, citasSoloPropias, etc.) quedan disponibles para

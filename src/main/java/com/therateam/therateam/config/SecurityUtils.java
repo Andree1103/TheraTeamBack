@@ -22,6 +22,14 @@ public final class SecurityUtils {
         }
     }
 
+    /** true solo si el rol del usuario tiene activado el permiso de exportar a Excel. */
+    public static boolean puedeExportar() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> "PUEDE_EXPORTAR".equals(a.getAuthority()));
+    }
+
     /** true solo si el usuario autenticado tiene el permiso PACIENTES_VER_TELEFONO activado. */
     public static boolean puedeVerTelefonoPacientes() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

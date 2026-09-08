@@ -21,6 +21,12 @@ public class CatRol {
     @Column(name = "pacientes_ver_telefono")
     private Boolean pacientesVerTelefono;
 
+    /** Si es true, este rol ve los botones de "Exportar Excel" — false por defecto. Es un
+     *  control de la interfaz (evita la descarga masiva casual), no una frontera de seguridad:
+     *  quien tiene acceso al modulo igual puede leer los datos en pantalla. */
+    @Column(name = "puede_exportar")
+    private Boolean puedeExportar;
+
     /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
      * lectura/navegación; crear/editar/eliminar son flags independientes (las lecturas de datos
