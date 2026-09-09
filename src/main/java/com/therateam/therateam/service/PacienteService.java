@@ -37,8 +37,19 @@ public class PacienteService {
     @Transactional(readOnly = true)
     public Page<Paciente> findAllPaged(Pageable pageable, String nombre, String dni, String correo,
                                         Long sedeId, Boolean activo, Long terapeutaId) {
+        return findAllPaged(pageable, nombre, dni, correo, sedeId, activo, terapeutaId, null, null);
+    }
+
+    /** Igual que el anterior, acotando ademas por fecha de alta del paciente (dias completos). */
+    @Transactional(readOnly = true)
+    public Page<Paciente> findAllPaged(Pageable pageable, String nombre, String dni, String correo,
+                                        Long sedeId, Boolean activo, Long terapeutaId,
+                                        java.time.LocalDate creadoDesde, java.time.LocalDate creadoHasta) {
         return repository.buscarPaged(blankToNull(nombre), blankToNull(dni), blankToNull(correo),
-                sedeId, activo, terapeutaId, pageable);
+                sedeId, activo, terapeutaId,
+                creadoDesde != null ? creadoDesde.atStartOfDay() : null,
+                creadoHasta != null ? creadoHasta.atTime(23, 59, 59) : null,
+                pageable);
     }
 
     private static String blankToNull(String s) {

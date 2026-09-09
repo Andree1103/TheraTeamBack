@@ -89,7 +89,13 @@ public class AtencionClinicaService {
                     tratamientoRepository.save(tratamiento);
                 }
             }
+        }
 
+        // El estado de la cita queda AMARRADO a la atencion: mientras exista una atencion
+        // registrada la cita es ASISTIDA. Antes esto solo se hacia la primera vez, asi que una
+        // cita que despues quedaba en otro estado seguia teniendo su atencion y ya no volvia a
+        // sincronizarse al editarla.
+        if (cita.getEstado() == null || !"ASISTIDA".equals(cita.getEstado().getKey())) {
             catEstadoCitaRepository.findByKey("ASISTIDA").ifPresent(est -> {
                 cita.setEstado(est);
                 citaRepository.save(cita);

@@ -72,7 +72,11 @@ public class PacienteController {
         return p;
     }
 
-    /** GET /api/pacientes?page=0&size=20&sort=apellido,asc&nombre=x&dni=x&correo=x&sedeId=1&activo=true */
+    /**
+     * GET /api/pacientes?page=0&size=20&sort=apellido,asc&nombre=x&dni=x&correo=x&sedeId=1&activo=true
+     * creadoDesde/creadoHasta (yyyy-MM-dd, dias completos) acotan por fecha de alta del paciente:
+     * es lo que usa el Excel de pacientes para bajar solo los nuevos de un rango.
+     */
     @GetMapping
     public Page<Paciente> getAll(@PageableDefault(size = 20, sort = "apellido") Pageable pageable,
                                   @RequestParam(required = false) String nombre,
@@ -80,8 +84,15 @@ public class PacienteController {
                                   @RequestParam(required = false) String correo,
                                   @RequestParam(required = false) Long sedeId,
                                   @RequestParam(required = false) Boolean activo,
+                                  @RequestParam(required = false)
+                                  @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+                                  java.time.LocalDate creadoDesde,
+                                  @RequestParam(required = false)
+                                  @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+                                  java.time.LocalDate creadoHasta,
                                   Authentication auth) {
-        Page<Paciente> page = service.findAllPaged(pageable, nombre, dni, correo, sedeId, activo, restriccionTerapeutaId(auth))
+        Page<Paciente> page = service.findAllPaged(pageable, nombre, dni, correo, sedeId, activo,
+                        restriccionTerapeutaId(auth), creadoDesde, creadoHasta)
                 .map(this::redactarTelefono);
         return enriquecerCreador(page);
     }

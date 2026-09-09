@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Repository
@@ -18,6 +19,8 @@ public interface PacienteRepository extends JpaRepository<Paciente, Long> {
      * Búsqueda server-side por campos separados (nombre, dni, correo, sede) + estado activo.
      * `terapeutaId` acota a pacientes con al menos una cita con ese terapeuta (para el terapeuta
      * restringido a "solo sus propias citas" — ver citasSoloPropias en Usuario); null = sin restringir.
+     * `creadoDesde`/`creadoHasta` acotan por fecha de alta del paciente (para exportar solo los
+     * pacientes nuevos de un rango); null = sin acotar.
      */
     @Query("""
         SELECT p FROM Paciente p
@@ -30,11 +33,16 @@ public interface PacienteRepository extends JpaRepository<Paciente, Long> {
           AND (CAST(:terapeutaId AS long) IS NULL OR EXISTS (
                 SELECT 1 FROM Cita c WHERE c.paciente = p AND c.terapeuta.id = :terapeutaId
               ))
+          AND (CAST(:creadoDesde AS timestamp) IS NULL OR p.createdAt >= :creadoDesde)
+          AND (CAST(:creadoHasta AS timestamp) IS NULL OR p.createdAt <= :creadoHasta)
         """)
     Page<Paciente> buscarPaged(@Param("nombre") String nombre, @Param("dni") String dni,
                                 @Param("correo") String correo, @Param("sedeId") Long sedeId,
                                 @Param("activo") Boolean activo,
-                                @Param("terapeutaId") Long terapeutaId, Pageable pageable);
+                                @Param("terapeutaId") Long terapeutaId,
+                                @Param("creadoDesde") LocalDateTime creadoDesde,
+                                @Param("creadoHasta") LocalDateTime creadoHasta,
+                                Pageable pageable);
 
     /** Reporte de adelantos: pacientes con crédito disponible (saldo a favor > 0) — `nombre` nulo/vacío no restringe. */
     @Query("""
