@@ -21,4 +21,6 @@ public class LoginResponse {
     private boolean citasPuedeCrear;
     /** Viene del ROL: si es false, el front no muestra los botones de "Exportar Excel". */
     private boolean puedeExportar;
+    /** Viene del ROL: si es false, el front no muestra el boton "Corregir" en Atenciones. */
+    private boolean puedeCorregirAtencion;
 }

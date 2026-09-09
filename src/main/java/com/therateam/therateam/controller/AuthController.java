@@ -133,7 +133,8 @@ public class AuthController {
                 usuario.getRol() != null ? usuario.getRol().getKey() : null, modulos, permisos,
                 terapeutaId, Boolean.TRUE.equals(usuario.getCitasSoloPropias()),
                 !Boolean.FALSE.equals(usuario.getCitasPuedeCrear()),
-                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeExportar())
+                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeExportar()),
+                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeCorregirAtencion())
         );
     }
 }

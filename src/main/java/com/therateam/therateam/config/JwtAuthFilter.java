@@ -78,6 +78,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PUEDE_EXPORTAR"));
                 }
 
+                // Tambien por ROL: quien puede corregir una atencion ya registrada.
+                Boolean puedeCorregir = claims.get("puedeCorregirAtencion", Boolean.class);
+                if (Boolean.TRUE.equals(puedeCorregir)) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_CORREGIR_ATENCION"));
+                }
+
                 var authentication = new UsernamePasswordAuthenticationToken(
                         claims.getSubject(), null, authorities);
                 // Los claims completos (terapeutaId, citasSoloPropias, etc.) quedan disponibles para

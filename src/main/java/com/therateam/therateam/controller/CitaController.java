@@ -168,11 +168,13 @@ public class CitaController {
 
     /**
      * PUT /api/citas/{id}/correccion — corrige una cita YA ATENDIDA (terapeuta, tipo de terapia,
-     * precio, método del pago). Solo ADMIN: la edición normal prohíbe estos cambios en una cita
-     * atendida y esa regla se mantiene; esto es la excepción para arreglar cargas mal hechas,
-     * y queda registrada en el historial de la cita.
+     * precio, método del pago). La edición normal prohíbe estos cambios en una cita atendida y
+     * esa regla se mantiene; esto es la excepción para arreglar cargas mal hechas, y queda
+     * registrada en el historial de la cita.
+     *
+     * Se habilita por ROL desde Seguridad > Roles (antes estaba clavado a ADMIN acá).
      */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('PUEDE_CORREGIR_ATENCION')")
     @PutMapping("/{id}/correccion")
     public ResponseEntity<CitaDTO> corregirAtencion(@PathVariable Long id,
                                                      @RequestBody com.therateam.therateam.dto.CorreccionAtencionRequest req) {

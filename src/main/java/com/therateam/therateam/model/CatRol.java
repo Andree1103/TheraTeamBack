@@ -27,6 +27,12 @@ public class CatRol {
     @Column(name = "puede_exportar")
     private Boolean puedeExportar;
 
+    /** Si es true, este rol puede CORREGIR una atencion (cambiar terapeuta, tipo de terapia,
+     *  precio o metodo de pago de una cita ya atendida, que es lo que la edicion normal
+     *  prohibe). false por defecto — antes estaba clavado a ADMIN en el codigo. */
+    @Column(name = "puede_corregir_atencion")
+    private Boolean puedeCorregirAtencion;
+
     /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
      * lectura/navegación; crear/editar/eliminar son flags independientes (las lecturas de datos
