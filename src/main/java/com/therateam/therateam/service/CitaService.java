@@ -868,10 +868,20 @@ public class CitaService {
      * una excepción) y que no supere el cupo simultáneo (maxPacientes) del tipo de terapia.
      * Lanza IllegalArgumentException (→ 400) si no cumple.
      */
-    /** No se pueden programar citas nuevas en una fecha/hora que ya pasó. */
+    /**
+     * Cuantos dias hacia atras se permite cargar una cita. 1 = ayer entero sigue abierto, para
+     * registrar la atencion que quedo sin agendar el dia anterior.
+     */
+    private static final int DIAS_ATRASO_PERMITIDOS = 1;
+
+    /** Se puede cargar una cita con hasta DIAS_ATRASO_PERMITIDOS dias de atraso, no mas. */
     private void validarFechaNoPasada(LocalDateTime fechaInicio) {
-        if (fechaInicio != null && fechaInicio.isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("No se puede crear una cita en una fecha u hora pasada.");
+        if (fechaInicio == null) return;
+        LocalDateTime minimo = LocalDate.now().minusDays(DIAS_ATRASO_PERMITIDOS).atStartOfDay();
+        if (fechaInicio.isBefore(minimo)) {
+            throw new IllegalArgumentException(
+                    "No se puede crear una cita con mas de " + DIAS_ATRASO_PERMITIDOS
+                    + " dia(s) de atraso (lo mas antiguo permitido es " + minimo.toLocalDate() + ").");
         }
     }
 

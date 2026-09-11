@@ -60,11 +60,10 @@ public class DisponibilidadService {
                         terapeutaId, finDia, inicioDia, ESTADOS_CANCELADOS, excluirCitaId)
                 : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
                         terapeutaId, finDia, inicioDia, ESTADOS_CANCELADOS);
-        for (Cita c : citas) {
-            if (c.getFechaInicio() == null || c.getFechaFin() == null) continue;
-            long ini = segundosDesdeInicioDia(c.getFechaInicio(), fecha);
-            long fin = segundosDesdeInicioDia(c.getFechaFin(), fecha);
-            if (fin > ini) franjas = restar(franjas, ini, fin);
+        // Solo se resta lo que ya NO tiene cupo: una cita sola no tapa el slot si su tipo
+        // admite varios pacientes (ver intervalosSinCupo).
+        for (long[] lleno : intervalosSinCupo(citas, fecha)) {
+            franjas = restar(franjas, lleno[0], lleno[1]);
         }
 
         franjas = normalizar(franjas);
@@ -76,6 +75,52 @@ public class DisponibilidadService {
                 .toList();
 
         return new DisponibilidadDiaDTO(fecha, diaSemana, franjasDTO);
+    }
+
+    /**
+     * Tramos del día en los que ya no queda cupo.
+     *
+     * Antes se restaba el horario de CUALQUIER cita, asi que un solo paciente tapaba el slot
+     * aunque el tipo admitiera mas (Terapia Fisica y CONVENCIONAL admiten 2, Estimulacion
+     * Temprana 5). Eso hacia que el front sacara al terapeuta del selector en cuanto se tocaba
+     * la hora, pese a que el backend si aceptaba la segunda cita.
+     *
+     * Se barre por tramos (no por cita) porque dos citas pueden solaparse parcialmente y traer
+     * cupos distintos: en cada tramo manda el cupo mas chico de las citas que lo cubren.
+     */
+    private List<long[]> intervalosSinCupo(List<Cita> citas, LocalDate fecha) {
+        // {inicio, fin, cupo} por cita
+        List<long[]> ocupaciones = new ArrayList<>();
+        java.util.TreeSet<Long> cortes = new java.util.TreeSet<>();
+        for (Cita c : citas) {
+            if (c.getFechaInicio() == null || c.getFechaFin() == null) continue;
+            long ini = segundosDesdeInicioDia(c.getFechaInicio(), fecha);
+            long fin = segundosDesdeInicioDia(c.getFechaFin(), fecha);
+            if (fin <= ini) continue;
+            Integer max = c.getTipoTerapia() != null ? c.getTipoTerapia().getMaxPacientes() : null;
+            long cupo = (max != null && max > 0) ? max : 1;
+            ocupaciones.add(new long[]{ini, fin, cupo});
+            cortes.add(ini);
+            cortes.add(fin);
+        }
+        if (ocupaciones.isEmpty()) return List.of();
+
+        List<Long> puntos = new ArrayList<>(cortes);
+        List<long[]> llenos = new ArrayList<>();
+        for (int i = 0; i + 1 < puntos.size(); i++) {
+            long a = puntos.get(i);
+            long b = puntos.get(i + 1);
+            long cuantas = 0;
+            long cupoMin = Long.MAX_VALUE;
+            for (long[] o : ocupaciones) {
+                if (o[0] <= a && o[1] >= b) {
+                    cuantas++;
+                    cupoMin = Math.min(cupoMin, o[2]);
+                }
+            }
+            if (cuantas > 0 && cuantas >= cupoMin) llenos.add(new long[]{a, b});
+        }
+        return llenos;
     }
 
     /**
