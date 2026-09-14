@@ -58,6 +58,10 @@ public class AtencionClinicaService {
 
         atencion.setFechaInicioReal(req.getFechaInicioReal());
         atencion.setNotasPost(req.getNotasPost());
+        atencion.setSubjetivo(req.getSubjetivo());
+        atencion.setObjetivo(req.getObjetivo());
+        atencion.setAnalisis(req.getAnalisis());
+        atencion.setPlan(req.getPlan());
         atencion = repository.save(atencion);
 
         // Reemplazar métricas
@@ -114,6 +118,10 @@ public class AtencionClinicaService {
             existing.setFechaFinReal(data.getFechaFinReal());
             existing.setDuracionRealMin(data.getDuracionRealMin());
             existing.setNotasPost(data.getNotasPost());
+            existing.setSubjetivo(data.getSubjetivo());
+            existing.setObjetivo(data.getObjetivo());
+            existing.setAnalisis(data.getAnalisis());
+            existing.setPlan(data.getPlan());
             existing.setArchivosUrl(data.getArchivosUrl());
             return repository.save(existing);
         });

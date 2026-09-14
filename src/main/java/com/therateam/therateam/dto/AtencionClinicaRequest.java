@@ -13,7 +13,16 @@ public class AtencionClinicaRequest {
 
     private Long citaId;
     private LocalDateTime fechaInicioReal;
+    /** Observacion libre. Sigue existiendo junto al SOAP: es lo que cargaron las atenciones
+     *  anteriores y sirve para lo que no encaja en ninguno de los cuatro campos. */
     private String notasPost;
+
+    // ── SOAP ──
+    private String subjetivo;
+    private String objetivo;
+    private String analisis;
+    private String plan;
+
     private List<MetricaInput> metricas;
 
     @Data
