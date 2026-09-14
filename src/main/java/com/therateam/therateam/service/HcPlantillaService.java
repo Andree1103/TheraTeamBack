@@ -38,15 +38,46 @@ public class HcPlantillaService {
         return repository.findByActivoTrueOrderByOrdenAscIdAsc();
     }
 
+    /** Plantillas de un tipo de ficha (HISTORIA o ATENCION). */
+    public List<HcPlantilla> findPorTipo(String tipo, boolean incluirInactivas) {
+        String t = normalizarTipoFicha(tipo);
+        return incluirInactivas
+                ? repository.findByTipoOrderByOrdenAscIdAsc(t)
+                : repository.findByTipoAndActivoTrueOrderByOrdenAscIdAsc(t);
+    }
+
+    /**
+     * La plantilla que toca para un tipo de terapia: la propia de ese tipo si existe, si no la
+     * generica. Devuelve vacio solo si no hay ninguna activa de ese tipo de ficha.
+     */
+    public java.util.Optional<HcPlantilla> resolver(String tipoFicha, Long tipoTerapiaId) {
+        String t = normalizarTipoFicha(tipoFicha);
+        List<HcPlantilla> candidatas = tipoTerapiaId != null
+                ? repository.resolverPara(t, tipoTerapiaId)
+                : repository.genericas(t);
+        return candidatas.stream().findFirst();
+    }
+
     public Optional<HcPlantilla> findById(Long id) {
         return repository.findById(id);
     }
 
     @Transactional
     public HcPlantilla crear(HcPlantilla data) {
+        data.setTipo(normalizarTipoFicha(data.getTipo()));
         validar(data);
         enlazar(data);
         return repository.save(data);
+    }
+
+    /** Sin tipo explicito se asume HISTORIA, que es como nacieron las primeras plantillas. */
+    private static String normalizarTipoFicha(String tipo) {
+        String t = (tipo == null || tipo.isBlank()) ? HcPlantilla.HISTORIA
+                : tipo.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!HcPlantilla.TIPOS_FICHA.contains(t)) {
+            throw new IllegalArgumentException("Tipo de ficha no válido: " + tipo);
+        }
+        return t;
     }
 
     /**
@@ -58,7 +89,8 @@ public class HcPlantillaService {
         return repository.findById(id).map(existente -> {
             validar(data);
             existente.setNombre(data.getNombre());
-            existente.setArea(data.getArea());
+            existente.setTipo(normalizarTipoFicha(data.getTipo()));
+            existente.setTipoTerapia(data.getTipoTerapia());
             existente.setDescripcion(data.getDescripcion());
             existente.setActivo(data.getActivo() == null || data.getActivo());
             existente.setOrden(data.getOrden() != null ? data.getOrden() : 0);

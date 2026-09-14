@@ -23,6 +23,9 @@ public class AtencionClinicaRequest {
     private String analisis;
     private String plan;
 
+    /** Valores de la ficha configurable de la atencion: {claveDelCampo: valor}. */
+    private java.util.Map<String, Object> datos;
+
     private List<MetricaInput> metricas;
 
     @Data

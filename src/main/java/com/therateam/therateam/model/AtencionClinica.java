@@ -56,6 +56,19 @@ public class AtencionClinica {
     @Column(columnDefinition = "text[]")
     private String[] archivosUrl;
 
+    /**
+     * Ficha configurable de la atencion. La plantilla dice que campos tiene y `datos` guarda
+     * los valores, igual que en la historia clinica. Los cuatro campos SOAP de arriba siguen
+     * existiendo por las atenciones cargadas antes de que la ficha fuera configurable.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "plantilla_id")
+    private HcPlantilla plantilla;
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "datos", columnDefinition = "jsonb")
+    private java.util.Map<String, Object> datos = new java.util.LinkedHashMap<>();
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

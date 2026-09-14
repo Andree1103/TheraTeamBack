@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -21,6 +22,8 @@ public class AtencionClinicaService {
     private final TratamientoRepository tratamientoRepository;
     private final CatEstadoSesionRepository catEstadoSesionRepository;
     private final CatEstadoCitaRepository catEstadoCitaRepository;
+    private final HcPlantillaService plantillaService;
+    private final FichaValidator validator;
 
     public List<AtencionClinica> findAll() { return repository.findAll(); }
 
@@ -56,12 +59,25 @@ public class AtencionClinicaService {
             esNueva = true;
         }
 
+        final AtencionClinica atencionActual = atencion;
         atencion.setFechaInicioReal(req.getFechaInicioReal());
         atencion.setNotasPost(req.getNotasPost());
         atencion.setSubjetivo(req.getSubjetivo());
         atencion.setObjetivo(req.getObjetivo());
         atencion.setAnalisis(req.getAnalisis());
         atencion.setPlan(req.getPlan());
+
+        // Ficha configurable: la plantilla sale del tipo de terapia de la cita (la propia de
+        // ese tipo, o la generica). Si no hay ninguna activa, la atencion se guarda igual con
+        // los campos SOAP de siempre — la ficha configurable no puede bloquear el registro.
+        Long tipoTerapiaId = cita.getTipoTerapia() != null ? cita.getTipoTerapia().getId() : null;
+        plantillaService.resolver(HcPlantilla.ATENCION, tipoTerapiaId).ifPresent(plantilla -> {
+            Map<String, Object> previos = atencionActual.getDatos() != null
+                    ? atencionActual.getDatos() : Map.of();
+            atencionActual.setPlantilla(plantilla);
+            atencionActual.setDatos(validator.validarYNormalizar(plantilla, req.getDatos(), previos));
+        });
+
         atencion = repository.save(atencion);
 
         // Reemplazar métricas

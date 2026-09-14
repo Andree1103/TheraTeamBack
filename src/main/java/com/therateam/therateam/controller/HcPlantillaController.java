@@ -23,11 +23,31 @@ public class HcPlantillaController {
 
     private final HcPlantillaService service;
 
-    /** GET /api/hc-plantillas?todas=true — sin el flag devuelve solo las activas. */
+    /**
+     * GET /api/hc-plantillas?tipo=HISTORIA&todas=true
+     * `tipo` filtra por tipo de ficha (HISTORIA o ATENCION); sin el, devuelve las dos.
+     * `todas` incluye las desactivadas — lo usa la pantalla que las administra.
+     */
     @GetMapping
     @PreAuthorize("hasAuthority('PUEDE_VER_HISTORIA') or hasAuthority('MODULO_CONFIGURACIONES')")
-    public List<HcPlantilla> listar(@RequestParam(defaultValue = "false") boolean todas) {
+    public List<HcPlantilla> listar(@RequestParam(required = false) String tipo,
+                                     @RequestParam(defaultValue = "false") boolean todas) {
+        if (tipo != null && !tipo.isBlank()) return service.findPorTipo(tipo, todas);
         return todas ? service.findAll() : service.findActivas();
+    }
+
+    /**
+     * GET /api/hc-plantillas/resolver?tipo=ATENCION&tipoTerapiaId=15
+     * La plantilla que corresponde a ese tipo de terapia: la suya si la tiene, si no la
+     * generica. Es lo que usa el modal de atencion para saber que campos pintar.
+     */
+    @GetMapping("/resolver")
+    @PreAuthorize("hasAuthority('PUEDE_VER_HISTORIA') or hasAuthority('MODULO_CITAS')")
+    public ResponseEntity<HcPlantilla> resolver(@RequestParam String tipo,
+                                                 @RequestParam(required = false) Long tipoTerapiaId) {
+        return service.resolver(tipo, tipoTerapiaId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.noContent().build());
     }
 
     @GetMapping("/{id}")
