@@ -48,6 +48,16 @@ public final class SecurityUtils {
         return tieneAutoridad("PUEDE_EDITAR_HISTORIA");
     }
 
+    /** true si el usuario tiene esa autoridad exacta (MODULO_X, MODULO_X_EDITAR, etc.). */
+    public static boolean tieneAutoridadPublica(String autoridad) {
+        return tieneAutoridad(autoridad);
+    }
+
+    /** true si el rol tiene acceso al modulo (la autoridad MODULO_<NOMBRE>). */
+    public static boolean tieneModulo(String modulo) {
+        return tieneAutoridad("MODULO_" + modulo);
+    }
+
     private static boolean tieneAutoridad(String autoridad) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return false;

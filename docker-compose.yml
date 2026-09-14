@@ -24,6 +24,10 @@ services:
       MAIL_HOST: ${MAIL_HOST:-}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      # Los adjuntos (fotos, informes, PDFs) viven en este volumen, no en la base.
+      ARCHIVOS_RUTA: /app/archivos
+    volumes:
+      - archivos_data:/app/archivos
     expose:
       - "8080"
 
@@ -40,3 +44,6 @@ services:
 volumes:
   db_data:
   caddy_data:
+  # OJO: este volumen NO entra en el backup de la base. Para respaldarlo:
+  #   docker compose exec -T backend tar -cf - -C /app/archivos . > archivos-$(date +%F).tar
+  archivos_data:
