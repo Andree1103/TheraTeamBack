@@ -39,6 +39,8 @@ public class CatRolService {
             existing.setPacientesVerTelefono(Boolean.TRUE.equals(data.getPacientesVerTelefono()));
             existing.setPuedeExportar(Boolean.TRUE.equals(data.getPuedeExportar()));
             existing.setPuedeCorregirAtencion(Boolean.TRUE.equals(data.getPuedeCorregirAtencion()));
+            existing.setPuedeVerHistoria(Boolean.TRUE.equals(data.getPuedeVerHistoria()));
+            existing.setPuedeEditarHistoria(Boolean.TRUE.equals(data.getPuedeEditarHistoria()));
             if (data.getPermisos() != null) {
                 // Actualiza en el sitio las filas que siguen (en vez de borrar-y-recrear): con
                 // orphanRemoval, un clear()+add() del mismo (rol,modulo) genera un INSERT antes del

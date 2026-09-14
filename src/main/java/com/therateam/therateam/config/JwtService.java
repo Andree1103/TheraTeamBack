@@ -65,6 +65,8 @@ public class JwtService {
                 .claim("pacientesVerTelefono", usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPacientesVerTelefono()))
                 .claim("puedeExportar", usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeExportar()))
                 .claim("puedeCorregirAtencion", usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeCorregirAtencion()))
+                .claim("puedeVerHistoria", usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeVerHistoria()))
+                .claim("puedeEditarHistoria", usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeEditarHistoria()))
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key())

@@ -38,6 +38,22 @@ public final class SecurityUtils {
                 .anyMatch(a -> "PUEDE_CORREGIR_ATENCION".equals(a.getAuthority()));
     }
 
+    /** true solo si el rol del usuario puede consultar historias clinicas. */
+    public static boolean puedeVerHistoria() {
+        return tieneAutoridad("PUEDE_VER_HISTORIA");
+    }
+
+    /** true solo si el rol del usuario puede crear o modificar historias clinicas. */
+    public static boolean puedeEditarHistoria() {
+        return tieneAutoridad("PUEDE_EDITAR_HISTORIA");
+    }
+
+    private static boolean tieneAutoridad(String autoridad) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream().anyMatch(a -> autoridad.equals(a.getAuthority()));
+    }
+
     /** true solo si el usuario autenticado tiene el permiso PACIENTES_VER_TELEFONO activado. */
     public static boolean puedeVerTelefonoPacientes() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

@@ -38,7 +38,20 @@ public class AtencionClinica {
     private LocalDateTime fechaInicioReal;
     private LocalDateTime fechaFinReal;
     private Integer duracionRealMin;
+
+    /** Nota libre de la atencion. Es lo que cargaron las atenciones anteriores al formato SOAP,
+     *  por eso se conserva junto a los cuatro campos de abajo. */
     private String notasPost;
+
+    // ── SOAP: el formato con el que se documenta una atencion clinica ──────────
+    /** Subjetivo: lo que refiere el paciente (molestias, como llego, que cambio desde la ultima vez). */
+    private String subjetivo;
+    /** Objetivo: lo que el terapeuta observa y mide (hallazgos, pruebas, lo que se hizo en sesion). */
+    private String objetivo;
+    /** Analisis: la interpretacion clinica de lo anterior. */
+    private String analisis;
+    /** Plan: que sigue para la proxima sesion. */
+    private String plan;
 
     @Column(columnDefinition = "text[]")
     private String[] archivosUrl;

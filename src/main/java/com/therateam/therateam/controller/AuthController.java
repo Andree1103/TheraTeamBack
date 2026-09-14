@@ -134,7 +134,9 @@ public class AuthController {
                 terapeutaId, Boolean.TRUE.equals(usuario.getCitasSoloPropias()),
                 !Boolean.FALSE.equals(usuario.getCitasPuedeCrear()),
                 usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeExportar()),
-                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeCorregirAtencion())
+                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeCorregirAtencion()),
+                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeVerHistoria()),
+                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeEditarHistoria())
         );
     }
 }

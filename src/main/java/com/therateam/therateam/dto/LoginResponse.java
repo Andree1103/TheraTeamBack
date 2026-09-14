@@ -23,4 +23,8 @@ public class LoginResponse {
     private boolean puedeExportar;
     /** Viene del ROL: si es false, el front no muestra el boton "Corregir" en Atenciones. */
     private boolean puedeCorregirAtencion;
+    /** Viene del ROL: si es false, el front no muestra la historia clinica del paciente. */
+    private boolean puedeVerHistoria;
+    /** Viene del ROL: si es false, la historia clinica se ve pero en solo lectura. */
+    private boolean puedeEditarHistoria;
 }

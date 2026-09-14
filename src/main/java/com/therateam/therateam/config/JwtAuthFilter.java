@@ -84,6 +84,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PUEDE_CORREGIR_ATENCION"));
                 }
 
+                // Historia clinica: datos de salud, con permiso propio de lectura y de escritura.
+                if (Boolean.TRUE.equals(claims.get("puedeVerHistoria", Boolean.class))) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_VER_HISTORIA"));
+                }
+                if (Boolean.TRUE.equals(claims.get("puedeEditarHistoria", Boolean.class))) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_EDITAR_HISTORIA"));
+                }
+
                 var authentication = new UsernamePasswordAuthenticationToken(
                         claims.getSubject(), null, authorities);
                 // Los claims completos (terapeutaId, citasSoloPropias, etc.) quedan disponibles para

@@ -33,6 +33,14 @@ public class CatRol {
     @Column(name = "puede_corregir_atencion")
     private Boolean puedeCorregirAtencion;
 
+    /** Historia clinica: son datos de salud, van con permiso propio y separado de ver/editar
+     *  paciente. Ver y editar se controlan por separado — hay roles que solo deben consultar. */
+    @Column(name = "puede_ver_historia")
+    private Boolean puedeVerHistoria;
+
+    @Column(name = "puede_editar_historia")
+    private Boolean puedeEditarHistoria;
+
     /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
      * lectura/navegación; crear/editar/eliminar son flags independientes (las lecturas de datos
