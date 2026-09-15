@@ -30,14 +30,17 @@ CREATE INDEX IF NOT EXISTS ix_citas_paciente     ON citas (paciente_id);
 CREATE INDEX IF NOT EXISTS ix_citas_terapeuta_fecha ON citas (terapeuta_id, fecha_inicio);
 CREATE INDEX IF NOT EXISTS ix_citas_estado       ON citas (estado_id);
 CREATE INDEX IF NOT EXISTS ix_citas_sesion       ON citas (sesion_id);
-CREATE INDEX IF NOT EXISTS ix_citas_lote         ON citas (lote_masivo_id);
+-- lote_masivo_id ya lo indexa idx_citas_lote_masivo_id (migracion del 2026-08-18). Un segundo
+-- indice sobre la misma columna no aporta nada y encarece cada escritura en citas.
 
 -- ── Relaciones que se recorren en cada carga ────────────────────────────────
 CREATE INDEX IF NOT EXISTS ix_sesiones_tratamiento   ON sesiones (tratamiento_id);
 CREATE INDEX IF NOT EXISTS ix_sesiones_cita_activa   ON sesiones (cita_activa_id);
 CREATE INDEX IF NOT EXISTS ix_tratamientos_paciente  ON tratamientos (paciente_id);
 CREATE INDEX IF NOT EXISTS ix_cita_historial_cita    ON cita_historial (cita_id);
-CREATE INDEX IF NOT EXISTS ix_saldo_mov_paciente     ON saldo_movimientos (paciente_id);
+-- saldo_movimientos.paciente_id ya queda cubierto por idx_saldo_mov_paciente_fecha
+-- (paciente_id, fecha DESC), de la migracion del 2026-08-26: un indice compuesto sirve
+-- tambien para las consultas que solo filtran por su primera columna.
 CREATE INDEX IF NOT EXISTS ix_pago_sesiones_pago     ON pago_sesiones (pago_id);
 
 -- ── Búsqueda de pacientes ───────────────────────────────────────────────────
@@ -50,6 +53,12 @@ CREATE INDEX IF NOT EXISTS ix_pacientes_dni_trgm
     ON pacientes USING gin (LOWER(dni) gin_trgm_ops);
 -- El Excel de pacientes filtra por fecha de alta.
 CREATE INDEX IF NOT EXISTS ix_pacientes_created ON pacientes (created_at);
+
+-- Estos dos se crearon en la primera version de esta migracion, antes de notar que ya
+-- estaban cubiertos. Se eliminan aqui para que una base que ya la aplico quede igual que
+-- una nueva; en una base limpia estos DROP no hacen nada.
+DROP INDEX IF EXISTS ix_citas_lote;
+DROP INDEX IF EXISTS ix_saldo_mov_paciente;
 
 COMMIT;
 
