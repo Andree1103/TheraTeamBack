@@ -14,6 +14,7 @@ import com.therateam.therateam.repository.CatMetodoPagoRepository;
 import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PacienteRepository;
 import com.therateam.therateam.repository.PagoRepository;
+import com.therateam.therateam.repository.SaldoMovimientoRepository;
 import com.therateam.therateam.repository.SesionRepository;
 import com.therateam.therateam.repository.TratamientoRepository;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class PagoService {
     private final PacienteRepository pacienteRepository;
     private final CatMetodoPagoRepository catMetodoPagoRepository;
     private final SaldoMovimientoService saldoMovimientoService;
+    private final SaldoMovimientoRepository saldoMovimientoRepository;
     private final VentaService ventaService;
 
     public List<PagoDTO> findAll() { return repository.findAllProjected(); }
@@ -313,26 +315,66 @@ public class PagoService {
                         "Se eliminó el pago #" + p.getId() + " — saldo restaurado", p.getCita(), null);
             });
         }
+        BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
+
         if (p.getTratamiento() != null && p.getTratamiento().getId() != null) {
             tratamientoRepository.findById(p.getTratamiento().getId()).ifPresent(t -> {
                 BigDecimal totalCobrado = t.getTotalCobrado() != null ? t.getTotalCobrado() : BigDecimal.ZERO;
-                BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
                 t.setTotalCobrado(totalCobrado.subtract(montoAplicado).max(BigDecimal.ZERO));
                 tratamientoRepository.save(t);
+
+                // Al cobrar, el monto no se quedó en el total del paquete: se repartió entre las
+                // citas de sus sesiones (aplicarMontoACita / repartirEntreSesiones). Si al
+                // eliminar el pago solo se baja totalCobrado, las citas siguen diciendo PAGADA
+                // sin ningún pago que las respalde — que es justo lo que se veía en el perfil.
+                BigDecimal precioRef = t.getPrecioPorSesion() != null ? t.getPrecioPorSesion() : BigDecimal.ZERO;
+                if (p.getCita() != null && p.getCita().getId() != null) {
+                    quitarMontoDeCita(p.getCita().getId(), montoAplicado, precioRef);
+                } else {
+                    quitarDeSesiones(t.getId(), montoAplicado, precioRef);
+                }
             });
             return;
         }
         if (p.getCita() != null && p.getCita().getId() != null) {
-            citaRepository.findById(p.getCita().getId()).ifPresent(cita -> {
-                if (cita.getPrecio() == null || cita.getPrecio().compareTo(BigDecimal.ZERO) <= 0) return;
-                BigDecimal montoPagado  = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
-                BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
-                BigDecimal nuevo = montoPagado.subtract(montoAplicado).max(BigDecimal.ZERO);
-                cita.setMontoPagado(nuevo);
-                cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey(
-                        estadoPagoPorMonto(nuevo, cita.getPrecio())).orElse(null));
-                citaRepository.save(cita);
-            });
+            quitarMontoDeCita(p.getCita().getId(), montoAplicado, BigDecimal.ZERO);
+        }
+    }
+
+    /** Inverso de {@link #aplicarMontoACita}: le quita `monto` a lo pagado de la cita y recalcula
+     *  su estado. Con precio 0 o sin precio no hay nada que cubrir, así que queda SIN_PAGO —
+     *  antes se devolvía sin tocarla y la cita se quedaba marcada como PAGADA. */
+    private void quitarMontoDeCita(Long citaId, BigDecimal monto, BigDecimal precioReferencia) {
+        citaRepository.findById(citaId).ifPresent(cita -> {
+            BigDecimal precio = cita.getPrecio() != null && cita.getPrecio().compareTo(BigDecimal.ZERO) > 0
+                    ? cita.getPrecio() : precioReferencia;
+            BigDecimal montoPagado = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
+            BigDecimal nuevo = montoPagado.subtract(monto).max(BigDecimal.ZERO);
+            cita.setMontoPagado(nuevo);
+            // Con precio 0 no se puede usar estadoPagoPorMonto: su regla "pagado >= precio" daría
+            // PAGADA con 0 de 0, que es justo el estado equivocado del que se venía.
+            String estado = precio.compareTo(BigDecimal.ZERO) <= 0 ? "SIN_PAGO" : estadoPagoPorMonto(nuevo, precio);
+            cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey(estado).orElse(null));
+            citaRepository.save(cita);
+        });
+    }
+
+    /** Inverso de {@link #repartirEntreSesiones}: como el reparto llena las sesiones en orden,
+     *  al deshacerlo se descuenta desde la última hacia atrás, para que el paquete quede igual
+     *  que antes del pago y no con las primeras sesiones a medio pagar. */
+    private void quitarDeSesiones(Long tratamientoId, BigDecimal monto, BigDecimal precioReferencia) {
+        BigDecimal restante = monto;
+        List<Sesion> sesiones = new java.util.ArrayList<>(sesionRepository.findByTratamientoIdWithCita(tratamientoId));
+        java.util.Collections.reverse(sesiones);
+        for (Sesion s : sesiones) {
+            if (restante.compareTo(BigDecimal.ZERO) <= 0) break;
+            Cita cita = s.getCitaActiva();
+            if (cita == null) continue;
+            BigDecimal montoPagado = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
+            if (montoPagado.compareTo(BigDecimal.ZERO) <= 0) continue;
+            BigDecimal aQuitar = restante.min(montoPagado);
+            quitarMontoDeCita(cita.getId(), aQuitar, precioReferencia);
+            restante = restante.subtract(aQuitar);
         }
     }
 
@@ -417,9 +459,24 @@ public class PagoService {
                 .orElse(null);
     }
 
+    /**
+     * Elimina el pago y deshace todo su efecto: saldo del paciente, total del paquete y estado de
+     * pago de las citas que cubría.
+     *
+     * Es @Transactional a propósito. Sin eso, si el DELETE fallaba (ver abajo) lo que revertir()
+     * ya había escrito quedaba grabado igual: el paquete bajaba su total cobrado, el pago seguía
+     * existiendo y las citas seguían PAGADA — la base terminaba peor que antes de intentarlo.
+     */
+    @Transactional
     public boolean delete(Long id) {
         return repository.findById(id).map(p -> {
             revertir(p);
+            // saldo_movimientos.pago_id no tiene ON DELETE, así que el movimiento que dejó este
+            // pago impedía borrarlo: el error salía como "Los datos enviados no son válidos",
+            // que no dice nada. Pasa siempre que el paciente pagó de más o usó saldo a favor.
+            // Se desligan en vez de borrarse — revertir() ya dejó anotado el movimiento que
+            // explica la devolución y el historial del paciente no debe perder ninguna línea.
+            saldoMovimientoRepository.desligarDelPago(id);
             repository.deleteById(id);
             return true;
         }).orElse(false);
