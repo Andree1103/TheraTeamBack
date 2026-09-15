@@ -46,6 +46,24 @@ public class DisponibilidadService {
     }
 
     /**
+     * La semana de VARIOS terapeutas de una sola vez.
+     *
+     * El modal de citas necesita la disponibilidad de todos para saber a quien ofrecer, y
+     * pedirla terapeuta por terapeuta significaba una peticion HTTP por cada uno cada vez que
+     * se tocaba un campo del formulario. Con esto es una sola.
+     */
+    public java.util.Map<Long, List<DisponibilidadDiaDTO>> obtenerDisponibilidadSemanaDeVarios(
+            List<Long> terapeutaIds, LocalDate desde, LocalDate hasta) {
+        java.util.Map<Long, List<DisponibilidadDiaDTO>> resultado = new java.util.LinkedHashMap<>();
+        if (terapeutaIds == null) return resultado;
+        for (Long id : terapeutaIds) {
+            if (id == null) continue;
+            resultado.put(id, obtenerDisponibilidadSemana(id, desde, hasta));
+        }
+        return resultado;
+    }
+
+    /**
      * @param excluirCitaId si no es null, esa cita se ignora al calcular ocupación
      *                      (uso: revalidar una cita que se está reprogramando/editando).
      */
