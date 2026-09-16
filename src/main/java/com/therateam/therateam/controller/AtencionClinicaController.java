@@ -33,6 +33,16 @@ public class AtencionClinicaController {
     }
 
     /**
+     * Las atenciones de un paciente de una sola vez. El perfil preguntaba "¿esta cita tiene
+     * atención?" cita por cita: un paciente con 60 citas disparaba 60 peticiones al abrirlo,
+     * y las que no tenían atención respondían 404 llenando la consola de errores falsos.
+     */
+    @GetMapping("/paciente/{pacienteId}")
+    public List<AtencionClinica> getByPaciente(@PathVariable Long pacienteId) {
+        return service.findByPaciente(pacienteId);
+    }
+
+    /**
      * Registra la atención de una cita:
      * guarda atencion_clinica + métricas, actualiza sesion y tratamiento.
      */

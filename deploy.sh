@@ -8,12 +8,16 @@
 # Qué hace, en orden:
 #   1. Backup de la base de datos (dentro del contenedor db, copiado al host).
 #   2. git pull de main.
-#   3. Aplica las migraciones SQL pendientes de db/migrations/ (son idempotentes).
+#   3. Aplica las migraciones SQL que todavía no se hayan aplicado (db/aplicar-migraciones.sh).
 #   4. Reconstruye y reinicia el contenedor del backend.
 #   5. Espera a que responda y hace un smoke test.
 #
 # Las migraciones se aplican ANTES de levantar el código nuevo porque son aditivas:
 # el backend viejo que sigue corriendo en ese momento simplemente ignora las columnas.
+#
+# Ninguno de los pasos borra datos. El backup del paso 1 se hace antes de tocar nada y el
+# script se aborta si sale vacío. Para ver qué falta por aplicar sin desplegar:
+#   ./db/aplicar-migraciones.sh --estado
 
 set -euo pipefail
 
@@ -43,12 +47,10 @@ echo "==> 2/5  git pull"
 git pull --ff-only origin main
 
 echo "==> 3/5  Migraciones SQL"
-shopt -s nullglob
-for f in db/migrations/*.sql; do
-  echo "    Aplicando $f"
-  $DC exec -T db psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 < "$f"
-done
-shopt -u nullglob
+# Cada archivo se aplica UNA sola vez: db/aplicar-migraciones.sh lleva el registro en la tabla
+# schema_migrations. Antes este paso reaplicaba todos los .sql en cada despliegue, lo que
+# dependía de que ninguna migración dejara nunca de ser repetible.
+DB_NAME="$DB_NAME" DB_USER="$DB_USER" ./db/aplicar-migraciones.sh
 
 echo "==> 4/5  Rebuild del backend"
 $DC up -d --build backend

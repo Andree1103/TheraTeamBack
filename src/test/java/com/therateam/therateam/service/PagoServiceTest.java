@@ -11,6 +11,7 @@ import com.therateam.therateam.repository.CatMetodoPagoRepository;
 import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PacienteRepository;
 import com.therateam.therateam.repository.PagoRepository;
+import com.therateam.therateam.repository.SaldoMovimientoRepository;
 import com.therateam.therateam.repository.SesionRepository;
 import com.therateam.therateam.repository.TratamientoRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +47,7 @@ class PagoServiceTest {
     @Mock private PacienteRepository pacienteRepository;
     @Mock private CatMetodoPagoRepository catMetodoPagoRepository;
     @Mock private SaldoMovimientoService saldoMovimientoService;
+    @Mock private SaldoMovimientoRepository saldoMovimientoRepository;
     @Mock private VentaService ventaService;
 
     private PagoService service;
@@ -54,7 +56,7 @@ class PagoServiceTest {
     void setUp() {
         service = new PagoService(repository, citaRepository, catEstadoPagoCitaRepository,
                 tratamientoRepository, sesionRepository, pacienteRepository, catMetodoPagoRepository,
-                saldoMovimientoService, ventaService);
+                saldoMovimientoService, saldoMovimientoRepository, ventaService);
         lenient().when(ventaService.preparar(any())).thenReturn(java.util.List.of());
         lenient().when(repository.save(any(Pago.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(pacienteRepository.save(any(Paciente.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -302,5 +304,73 @@ class PagoServiceTest {
         assertThat(eliminado).isTrue();
         assertThat(t.getTotalCobrado()).isEqualByComparingTo("450");
         assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void delete_dePagoDePaquete_devuelveLasCitasDeSusSesionesASinPago() {
+        // El reparto de save() llena las sesiones en orden; al eliminar el pago hay que deshacerlo
+        // desde la última hacia atrás. Antes solo se bajaba totalCobrado y las citas se quedaban
+        // marcadas como PAGADA sin ningún pago detrás.
+        Tratamiento t = tratamiento(new BigDecimal("57"), 5, new BigDecimal("100"));
+        when(tratamientoRepository.findById(1L)).thenReturn(Optional.of(t));
+        Paciente paciente = paciente(BigDecimal.ZERO);
+        when(pacienteRepository.findById(1L)).thenReturn(Optional.of(paciente));
+
+        // Estado tal como lo dejó el adelanto de 100: la 1ra completa, la 2da a medias.
+        Sesion s1 = sesionConCita(1, 101L, new BigDecimal("57"), new BigDecimal("57"));
+        Sesion s2 = sesionConCita(2, 102L, new BigDecimal("57"), new BigDecimal("43"));
+        Sesion s3 = sesionConCita(3, 103L, new BigDecimal("57"), BigDecimal.ZERO);
+        when(sesionRepository.findByTratamientoIdWithCita(1L)).thenReturn(List.of(s1, s2, s3));
+        when(citaRepository.findById(101L)).thenReturn(Optional.of(s1.getCitaActiva()));
+        when(citaRepository.findById(102L)).thenReturn(Optional.of(s2.getCitaActiva()));
+
+        CatEstadoPagoCita sinPago = new CatEstadoPagoCita(); sinPago.setKey("SIN_PAGO");
+        when(catEstadoPagoCitaRepository.findByKey("SIN_PAGO")).thenReturn(Optional.of(sinPago));
+
+        Pago pagoAEliminar = pagoParaTratamiento(1L, new BigDecimal("100"));
+        pagoAEliminar.setId(7L);
+        pagoAEliminar.setMontoAplicado(new BigDecimal("100"));
+        pagoAEliminar.setSaldoPrevio(BigDecimal.ZERO);
+        when(repository.findById(7L)).thenReturn(Optional.of(pagoAEliminar));
+
+        assertThat(service.delete(7L)).isTrue();
+
+        assertThat(t.getTotalCobrado()).isEqualByComparingTo("0");
+        assertThat(s1.getCitaActiva().getMontoPagado()).isEqualByComparingTo("0");
+        assertThat(s1.getCitaActiva().getEstadoPago().getKey()).isEqualTo("SIN_PAGO");
+        assertThat(s2.getCitaActiva().getMontoPagado()).isEqualByComparingTo("0");
+        assertThat(s2.getCitaActiva().getEstadoPago().getKey()).isEqualTo("SIN_PAGO");
+        assertThat(s3.getCitaActiva().getMontoPagado()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void delete_deCitaSinPrecio_tambienLaDevuelveASinPago() {
+        // Una cita sin precio propio se marcaba PAGADA al cobrarla, pero al eliminar el pago la
+        // reversión se saltaba ese caso y la cita seguía diciendo PAGADA para siempre.
+        Cita cita = new Cita();
+        cita.setId(55L);
+        cita.setPrecio(BigDecimal.ZERO);
+        cita.setMontoPagado(new BigDecimal("80"));
+        when(citaRepository.findById(55L)).thenReturn(Optional.of(cita));
+        Paciente paciente = paciente(BigDecimal.ZERO);
+        when(pacienteRepository.findById(1L)).thenReturn(Optional.of(paciente));
+
+        CatEstadoPagoCita sinPago = new CatEstadoPagoCita(); sinPago.setKey("SIN_PAGO");
+        when(catEstadoPagoCitaRepository.findByKey("SIN_PAGO")).thenReturn(Optional.of(sinPago));
+
+        Pago pagoAEliminar = new Pago();
+        pagoAEliminar.setId(9L);
+        Paciente pacRef = new Paciente(); pacRef.setId(1L);
+        pagoAEliminar.setPaciente(pacRef);
+        Cita citaRef = new Cita(); citaRef.setId(55L);
+        pagoAEliminar.setCita(citaRef);
+        pagoAEliminar.setMontoAplicado(new BigDecimal("80"));
+        pagoAEliminar.setSaldoPrevio(BigDecimal.ZERO);
+        when(repository.findById(9L)).thenReturn(Optional.of(pagoAEliminar));
+
+        assertThat(service.delete(9L)).isTrue();
+
+        assertThat(cita.getMontoPagado()).isEqualByComparingTo("0");
+        assertThat(cita.getEstadoPago().getKey()).isEqualTo("SIN_PAGO");
     }
 }

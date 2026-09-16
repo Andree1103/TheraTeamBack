@@ -79,6 +79,7 @@ public class PacienteService {
         if (paciente.getFechaNacimiento() == null) {
             throw new IllegalArgumentException("La fecha de nacimiento es obligatoria.");
         }
+        validarDniUnico(paciente.getDni(), null);
         validarApoderadoSiEsMenor(paciente);
         if (paciente.getSede() == null) {
             sedeRepository.findFirstByActivoTrueOrderByIdAsc().ifPresent(paciente::setSede);
@@ -91,6 +92,7 @@ public class PacienteService {
 
     @Transactional
     public Optional<Paciente> update(Long id, Paciente data) {
+        validarDniUnico(data.getDni(), id);
         validarApoderadoSiEsMenor(data);
         return repository.findById(id).map(existing -> {
             existing.setNombre(data.getNombre());
@@ -114,6 +116,26 @@ public class PacienteService {
                 existing.setUsuario(crearUsuarioParaPaciente(existing));
             }
             return repository.save(existing);
+        });
+    }
+
+    /**
+     * El DNI identifica al paciente: repetirlo crea dos fichas de la misma persona, con sus citas
+     * y sus pagos partidos entre ambas. La base ya lo impedía con una restricción UNIQUE, pero el
+     * error llegaba a pantalla como "Los datos enviados no son válidos o están incompletos", sin
+     * decir cuál era el dato ni con quién chocaba. Se valida antes para poder nombrar al paciente
+     * que ya lo tiene y que la recepción lo busque en vez de volver a crearlo.
+     *
+     * @param idActual al editar, el propio paciente — para que guardar sin cambiarle el DNI no
+     *                 se choque consigo mismo.
+     */
+    private void validarDniUnico(String dni, Long idActual) {
+        if (isBlank(dni)) return;
+        repository.findByDni(dni.trim()).ifPresent(otro -> {
+            if (idActual != null && idActual.equals(otro.getId())) return;
+            throw new IllegalArgumentException(
+                    "Ya existe un paciente con el DNI " + dni.trim() + ": "
+                    + otro.getNombre() + " " + otro.getApellido() + ".");
         });
     }
 

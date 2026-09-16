@@ -3,6 +3,7 @@ package com.therateam.therateam.repository;
 import com.therateam.therateam.dto.SaldoMovimientoDTO;
 import com.therateam.therateam.model.SaldoMovimiento;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -44,4 +45,13 @@ public interface SaldoMovimientoRepository extends JpaRepository<SaldoMovimiento
         ORDER BY m.fecha DESC, m.id DESC
         """)
     List<SaldoMovimientoDTO> historialDeVarios(@Param("pacienteIds") List<Long> pacienteIds);
+
+    /** Corta la referencia al pago sin borrar el movimiento: al eliminar un pago, la FK
+     *  saldo_movimientos.pago_id (sin ON DELETE) lo bloqueaba, pero el movimiento sigue siendo
+     *  parte del historial del paciente y no debe desaparecer con él.
+     *  flush antes y clear después: el propio revertir() acaba de crear un movimiento ligado a
+     *  este pago, y sin eso quedaría fuera del UPDATE o volvería a escribirse desde el caché. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE SaldoMovimiento m SET m.pago = null WHERE m.pago.id = :pagoId")
+    void desligarDelPago(@Param("pagoId") Long pagoId);
 }

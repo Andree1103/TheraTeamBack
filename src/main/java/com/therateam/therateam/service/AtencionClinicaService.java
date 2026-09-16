@@ -33,6 +33,11 @@ public class AtencionClinicaService {
         return repository.findByCitaId(citaId);
     }
 
+    /** Todas las atenciones del paciente — lo que el perfil necesita para su pestaña. */
+    public List<AtencionClinica> findByPaciente(Long pacienteId) {
+        return repository.findByPacienteId(pacienteId);
+    }
+
     /**
      * Registra o actualiza la atención de una cita (upsert por cita_id):
      *   - Si es nueva: guarda atencion + métricas, actualiza sesion→ATENDIDA,
