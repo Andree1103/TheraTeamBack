@@ -69,11 +69,17 @@ public class CitaController {
             @RequestParam(required = false) String paciente,
             @RequestParam(required = false) Long areaId,
             @RequestParam(required = false) Long metodoPagoId,
+            // Los tres de abajo los usa la agenda: su barra de filtros ahora se resuelve aquí en
+            // vez de traerse la semana completa y descartar en el navegador lo que no cumple.
+            @RequestParam(required = false) String estadoPagoKey,
+            @RequestParam(required = false) String tipoTerapiaKey,
+            @RequestParam(required = false) List<Long> terapeutaIds,
             @PageableDefault(size = 50) Pageable pageable,
             Authentication auth
     ) {
         return service.findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, restriccionTerapeutaId(auth),
-                estadoKey, paciente, areaId, metodoPagoId, pageable).map(this::redactarTelefono);
+                estadoKey, paciente, areaId, metodoPagoId, estadoPagoKey, tipoTerapiaKey, terapeutaIds,
+                pageable).map(this::redactarTelefono);
     }
 
     @GetMapping("/{id}")

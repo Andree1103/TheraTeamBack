@@ -120,6 +120,9 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
                OR LOWER(CONCAT(p.nombre, ' ', p.apellido)) LIKE LOWER(CONCAT('%', CAST(:paciente AS string), '%')))
           AND (CAST(:areaId AS long) IS NULL OR a.id = :areaId)
           AND (CAST(:metodoPagoId AS long) IS NULL OR mUlt.id = :metodoPagoId)
+          AND (CAST(:estadoPagoKey AS string) IS NULL OR ep.key = :estadoPagoKey)
+          AND (CAST(:tipoTerapiaKey AS string) IS NULL OR tt.key = :tipoTerapiaKey)
+          AND (:sinFiltroTerapeutas = TRUE OR ter.id IN :terapeutaIds)
         """)
     Page<CitaDTO> findByFiltrosProjected(@Param("fechaInicio") LocalDateTime fechaInicio,
                                           @Param("fechaFin") LocalDateTime fechaFin,
@@ -129,6 +132,14 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
                                           @Param("paciente") String paciente,
                                           @Param("areaId") Long areaId,
                                           @Param("metodoPagoId") Long metodoPagoId,
+                                          @Param("estadoPagoKey") String estadoPagoKey,
+                                          @Param("tipoTerapiaKey") String tipoTerapiaKey,
+                                          // La agenda deja marcar varios terapeutas a la vez, por eso una lista
+                                          // y no un solo id. El booleano evita el "IN ()" vacio, que no es SQL
+                                          // valido: cuando no hay filtro la condicion se cortocircuita y la
+                                          // lista ni se mira.
+                                          @Param("sinFiltroTerapeutas") boolean sinFiltroTerapeutas,
+                                          @Param("terapeutaIds") java.util.Collection<Long> terapeutaIds,
                                           Pageable pageable);
 
     /** Proyección liviana para un solo registro (GET /{id}). */
