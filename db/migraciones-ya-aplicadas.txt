@@ -1,0 +1,15 @@
+# Migraciones que YA estaban aplicadas en produccion cuando se introdujo el control
+# (db/aplicar-migraciones.sh, 15-09-2026). El deploy anterior reaplicaba todos los .sql en cada
+# despliegue, asi que estas seis corrieron con seguridad.
+#
+# Solo estas se dan por aplicadas sin ejecutarlas. Cualquier archivo que NO este en esta lista se
+# aplica, aunque la tabla de control se este creando en esa misma corrida. Sin esta lista, el
+# script marcaba como aplicada tambien una migracion recien agregada y su tabla nunca se creaba.
+#
+# ESTA LISTA NO SE TOCA. Una migracion nueva no se agrega aqui: se deja que el script la aplique.
+2026-08-18-lote-apoderado-pagos-permisos.sql
+2026-08-26-saldo-movimientos.sql
+2026-08-27-productos-venta.sql
+2026-09-08-rol-puede-exportar.sql
+2026-09-09-rol-corregir-atencion.sql
+2026-09-15-indices-rendimiento.sql

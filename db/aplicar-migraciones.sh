@@ -49,19 +49,32 @@ x "SET client_min_messages = warning;
      aplicada_en TIMESTAMPTZ NOT NULL DEFAULT now()
    )"
 
-# Primera vez sobre una base que YA existía: sus migraciones ya corrieron (el deploy anterior
-# las aplicaba todas en cada despliegue), así que se registran sin volver a ejecutarlas.
-# Reejecutarlas sería justamente el riesgo que este script viene a quitar.
-# En una base recién creada no hay nada que registrar y se aplican normalmente.
+# Primera vez sobre una base que YA existía: las migraciones que corrieron con el deploy anterior
+# se registran sin volver a ejecutarlas, porque reejecutarlas es justo el riesgo que este script
+# viene a quitar.
+#
+# Cuáles son esas sale del manifiesto, NO del contenido de la carpeta. Es la diferencia que
+# importa: tomando la carpeta entera, una migración agregada después del último despliegue
+# quedaba marcada como aplicada sin haberse ejecutado nunca, y su tabla no se creaba. Se detectó
+# exactamente así, con la migración de paciente_horario_fijo.
+MANIFIESTO="${MANIFIESTO:-$(dirname "$0")/migraciones-ya-aplicadas.txt}"
 if [ "$ES_PRIMERA_VEZ" = "1" ] && [ "$(q "SELECT to_regclass('public.pacientes') IS NOT NULL")" = "t" ]; then
-  echo "  Base existente — se registran las migraciones ya aplicadas, sin re-ejecutarlas:"
-  for f in "$MIGRATIONS_DIR"/*.sql; do
-    [ -e "$f" ] || continue
-    n="$(basename "$f")"
-    x "INSERT INTO schema_migrations (nombre, checksum) VALUES ('$n', '$(suma "$f")')
-       ON CONFLICT (nombre) DO NOTHING"
-    echo "    ya aplicada   $n"
-  done
+  if [ -f "$MANIFIESTO" ]; then
+    echo "  Base existente — se dan por aplicadas las del manifiesto, sin re-ejecutarlas:"
+    while IFS= read -r n; do
+      case "$n" in ''|'#'*) continue;; esac
+      f="$MIGRATIONS_DIR/$n"
+      if [ ! -f "$f" ]; then
+        echo "    AVISO: el manifiesto nombra $n, que ya no está en migrations/. Se ignora." >&2
+        continue
+      fi
+      x "INSERT INTO schema_migrations (nombre, checksum) VALUES ('$n', '$(suma "$f")')
+         ON CONFLICT (nombre) DO NOTHING"
+      echo "    ya aplicada   $n"
+    done < "$MANIFIESTO"
+  else
+    echo "  AVISO: no se encontró $MANIFIESTO — se aplicarán TODAS las migraciones." >&2
+  fi
 fi
 
 # ── Recorrido de los archivos ───────────────────────────────────────────────
