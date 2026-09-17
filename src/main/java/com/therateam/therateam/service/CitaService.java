@@ -819,9 +819,29 @@ public class CitaService {
             if (input == null) continue;
             Paciente acompanante = buscarOCrearPaciente(input);
             if (acompanante == null) continue;
-            resultado.add(crearCitaParaPaciente(acompanante, terapeuta, tipoTerapia, estadoCita, modalidad,
-                    req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
-                    req.getPrecioPorSesion(), null, tipoRecurrencia, null, null));
+
+            // Cada acompañante puede traer su propio tipo de terapia: compartir horario y
+            // terapeuta no obliga a recibir lo mismo — en física uno puede venir a descarga
+            // muscular y el otro a convencional. Sin esto el segundo heredaba el tipo del
+            // primero aunque en pantalla se eligiera otro.
+            TipoTerapia tipoDelAcompanante = tipoTerapia;
+            if (input.getTipoKey() != null && !input.getTipoKey().isBlank()
+                    && !input.getTipoKey().equals(req.getTipoKey())) {
+                tipoDelAcompanante = tipoTerapiaRepository.findByKey(input.getTipoKey())
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Tipo de terapia no encontrado: " + input.getTipoKey()));
+            }
+            // La duración y el precio dependen del tipo, así que viajan con él.
+            Integer duracionAcomp = input.getDuracionMinutos() != null
+                    ? input.getDuracionMinutos() : req.getDuracionMinutos();
+            LocalDateTime finAcomp = (req.getFechaInicio() != null && duracionAcomp != null)
+                    ? req.getFechaInicio().plusMinutes(duracionAcomp) : fechaFin;
+            java.math.BigDecimal precioAcomp = input.getPrecioPorSesion() != null
+                    ? input.getPrecioPorSesion() : req.getPrecioPorSesion();
+
+            resultado.add(crearCitaParaPaciente(acompanante, terapeuta, tipoDelAcompanante, estadoCita, modalidad,
+                    req.getFechaInicio(), finAcomp, duracionAcomp, req.getObservacion(),
+                    precioAcomp, null, tipoRecurrencia, null, null));
         }
 
         return resultado;
