@@ -2,6 +2,8 @@ package com.therateam.therateam.service;
 
 import com.therateam.therateam.dto.HorarioFijoRequest;
 import com.therateam.therateam.model.PacienteHorarioFijo;
+import com.therateam.therateam.model.Terapeuta;
+import com.therateam.therateam.model.TipoTerapia;
 import com.therateam.therateam.repository.PacienteHorarioFijoRepository;
 import com.therateam.therateam.repository.PacienteRepository;
 import com.therateam.therateam.repository.TerapeutaRepository;
@@ -77,12 +79,14 @@ public class PacienteHorarioFijoService {
 
             var horario = new PacienteHorarioFijo();
             horario.setPaciente(paciente);
-            horario.setTerapeuta(terapeutaRepository.findById(r.getTerapeutaId())
-                    .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado")));
+            var terapeuta = terapeutaRepository.findById(r.getTerapeutaId())
+                    .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+            horario.setTerapeuta(terapeuta);
             if (r.getTipoTerapiaId() != null) {
                 horario.setTipoTerapia(tipoTerapiaRepository.findById(r.getTipoTerapiaId())
                         .orElseThrow(() -> new IllegalArgumentException("Tipo de terapia no encontrado")));
             }
+            validarCasillaLibre(pacienteId, r, horario.getTipoTerapia(), terapeuta);
             horario.setDiaSemana(r.getDiaSemana());
             horario.setHoraInicio(r.getHoraInicio());
             horario.setHoraFin(r.getHoraFin());
@@ -95,5 +99,43 @@ public class PacienteHorarioFijoService {
         // el horario que ya tenía en vez de quedarse sin ninguno.
         repository.borrarDelPaciente(pacienteId);
         return repository.saveAll(aGuardar);
+    }
+
+    /**
+     * Dos pacientes no pueden quedarse con la misma casilla del mismo terapeuta.
+     *
+     * El límite no es "uno y ya": es el maxPacientes del tipo de terapia, la misma regla que
+     * aplica validarDisponibilidad() al agendar de verdad. Física admite dos a la vez, así que
+     * prohibir el segundo aquí contradiría a la agenda y dejaría horarios que sí se pueden
+     * cumplir marcados como imposibles. Sin tipo de terapia se asume uno, que es lo prudente.
+     */
+    private void validarCasillaLibre(Long pacienteId, HorarioFijoRequest r,
+                                     TipoTerapia tipo, Terapeuta terapeuta) {
+        var ocupantes = repository.enLaMismaCasilla(
+                r.getTerapeutaId(), r.getDiaSemana(), r.getHoraInicio(), pacienteId);
+        if (ocupantes.isEmpty()) return;
+
+        int cupo = (tipo != null && tipo.getMaxPacientes() != null && tipo.getMaxPacientes() > 0)
+                ? tipo.getMaxPacientes() : 1;
+        if (ocupantes.size() + 1 <= cupo) return;
+
+        List<String> nombres = ocupantes.stream()
+                .map(h -> h.getPaciente().getNombre() + " " + h.getPaciente().getApellido())
+                .distinct()
+                .toList();
+        // El sujeto de la frase es el horario, no los pacientes: "ya lo tiene / ya lo tienen".
+        String quienes = nombres.size() == 1 ? nombres.get(0)
+                : String.join(", ", nombres.subList(0, nombres.size() - 1)) + " y " + nombres.get(nombres.size() - 1);
+        String conQuien = nombreDe(terapeuta);
+        throw new IllegalArgumentException(
+                "El horario de los " + DIAS.get(r.getDiaSemana()) + " a las " + r.getHoraInicio()
+                + (conQuien.isBlank() ? "" : " con " + conQuien)
+                + (nombres.size() == 1 ? " ya lo tiene " : " ya lo tienen ") + quienes + "."
+                + (cupo > 1 ? " Ese horario admite " + cupo + " pacientes y ya están tomados." : ""));
+    }
+
+    private static String nombreDe(Terapeuta t) {
+        if (t == null || t.getUsuario() == null) return "";
+        return (t.getUsuario().getNombre() + " " + t.getUsuario().getApellido()).trim();
     }
 }

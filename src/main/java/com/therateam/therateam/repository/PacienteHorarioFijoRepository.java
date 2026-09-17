@@ -33,6 +33,27 @@ public interface PacienteHorarioFijoRepository extends JpaRepository<PacienteHor
         """)
     List<PacienteHorarioFijo> delTerapeuta(@Param("terapeutaId") Long terapeutaId);
 
+    /**
+     * Los horarios de OTROS pacientes en la misma casilla (terapeuta, día y hora). Es lo que
+     * permite avisar de que dos pacientes van a chocar antes de guardar.
+     *
+     * Excluye al propio paciente porque al editar se reemplaza su lista completa: sus propias
+     * líneas están a punto de borrarse y contarlas sería chocar consigo mismo.
+     */
+    @Query("""
+        SELECT h FROM PacienteHorarioFijo h
+        JOIN FETCH h.paciente p
+        WHERE h.terapeuta.id = :terapeutaId
+          AND h.diaSemana = :diaSemana
+          AND h.horaInicio = :horaInicio
+          AND h.activo = true
+          AND p.id <> :excluirPacienteId
+        """)
+    List<PacienteHorarioFijo> enLaMismaCasilla(@Param("terapeutaId") Long terapeutaId,
+                                               @Param("diaSemana") Integer diaSemana,
+                                               @Param("horaInicio") java.time.LocalTime horaInicio,
+                                               @Param("excluirPacienteId") Long excluirPacienteId);
+
     @Query("DELETE FROM PacienteHorarioFijo h WHERE h.paciente.id = :pacienteId")
     @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true, clearAutomatically = true)
     void borrarDelPaciente(@Param("pacienteId") Long pacienteId);
