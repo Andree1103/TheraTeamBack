@@ -111,8 +111,11 @@ public class PacienteHorarioFijoService {
      */
     private void validarCasillaLibre(Long pacienteId, HorarioFijoRequest r,
                                      TipoTerapia tipo, Terapeuta terapeuta) {
+        // Sin hora de fin no hay rango que solapar: se compara como un punto, y la consulta
+        // cae en su rama de "misma hora exacta".
+        var finComparar = r.getHoraFin() != null ? r.getHoraFin() : r.getHoraInicio();
         var ocupantes = repository.enLaMismaCasilla(
-                r.getTerapeutaId(), r.getDiaSemana(), r.getHoraInicio(), pacienteId);
+                r.getTerapeutaId(), r.getDiaSemana(), r.getHoraInicio(), finComparar, pacienteId);
         if (ocupantes.isEmpty()) return;
 
         int cupo = (tipo != null && tipo.getMaxPacientes() != null && tipo.getMaxPacientes() > 0)
@@ -129,6 +132,7 @@ public class PacienteHorarioFijoService {
         String conQuien = nombreDe(terapeuta);
         throw new IllegalArgumentException(
                 "El horario de los " + DIAS.get(r.getDiaSemana()) + " a las " + r.getHoraInicio()
+                + (r.getHoraFin() != null ? "-" + r.getHoraFin() : "")
                 + (conQuien.isBlank() ? "" : " con " + conQuien)
                 + (nombres.size() == 1 ? " ya lo tiene " : " ya lo tienen ") + quienes + "."
                 + (cupo > 1 ? " Ese horario admite " + cupo + " pacientes y ya están tomados." : ""));

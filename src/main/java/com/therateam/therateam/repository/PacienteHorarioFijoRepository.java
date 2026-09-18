@@ -34,8 +34,15 @@ public interface PacienteHorarioFijoRepository extends JpaRepository<PacienteHor
     List<PacienteHorarioFijo> delTerapeuta(@Param("terapeutaId") Long terapeutaId);
 
     /**
-     * Los horarios de OTROS pacientes en la misma casilla (terapeuta, día y hora). Es lo que
+     * Los horarios de OTROS pacientes que se PISAN con el que se quiere guardar. Es lo que
      * permite avisar de que dos pacientes van a chocar antes de guardar.
+     *
+     * Se compara por solapamiento y no por hora de inicio igual, porque la duración es editable:
+     * un 10:00–11:00 y un 10:30–11:00 del mismo terapeuta chocan de verdad aunque empiecen a
+     * horas distintas, y con la comparación por igualdad pasaban los dos.
+     *
+     * El OR de la hora de inicio cubre las filas antiguas que quedaron sin hora de fin: ahí no
+     * hay rango que solapar, así que se mantiene la regla vieja de misma hora exacta.
      *
      * Excluye al propio paciente porque al editar se reemplaza su lista completa: sus propias
      * líneas están a punto de borrarse y contarlas sería chocar consigo mismo.
@@ -45,13 +52,15 @@ public interface PacienteHorarioFijoRepository extends JpaRepository<PacienteHor
         JOIN FETCH h.paciente p
         WHERE h.terapeuta.id = :terapeutaId
           AND h.diaSemana = :diaSemana
-          AND h.horaInicio = :horaInicio
           AND h.activo = true
           AND p.id <> :excluirPacienteId
+          AND (h.horaInicio = :horaInicio
+               OR (h.horaInicio < :horaFin AND COALESCE(h.horaFin, h.horaInicio) > :horaInicio))
         """)
     List<PacienteHorarioFijo> enLaMismaCasilla(@Param("terapeutaId") Long terapeutaId,
                                                @Param("diaSemana") Integer diaSemana,
                                                @Param("horaInicio") java.time.LocalTime horaInicio,
+                                               @Param("horaFin") java.time.LocalTime horaFin,
                                                @Param("excluirPacienteId") Long excluirPacienteId);
 
     @Query("DELETE FROM PacienteHorarioFijo h WHERE h.paciente.id = :pacienteId")
