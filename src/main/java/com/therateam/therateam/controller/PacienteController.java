@@ -37,10 +37,7 @@ public class PacienteController {
      * devuelve su terapeutaId para acotar también qué pacientes ve — solo los suyos, no todos.
      */
     private Long restriccionTerapeutaId(Authentication auth) {
-        if (!(auth.getDetails() instanceof Claims claims)) return null;
-        if (!Boolean.TRUE.equals(claims.get("citasSoloPropias", Boolean.class))) return null;
-        Number terapeutaId = claims.get("terapeutaId", Number.class);
-        return terapeutaId != null ? terapeutaId.longValue() : -1L;
+        return SecurityUtils.restriccionTerapeutaId(auth);
     }
 
     /** El celular es un dato sensible: por defecto ningún usuario lo ve, salvo que se le active

@@ -60,11 +60,19 @@ public interface PacienteHorarioFijoRepository extends JpaRepository<PacienteHor
                                                @Param("excluirPacienteId") Long excluirPacienteId);
 
     /**
-     * Todos los horarios activos de la clínica, en una sola consulta.
+     * Los horarios activos de los pacientes que cumplen los MISMOS filtros que el listado de
+     * pacientes, en una sola consulta.
      *
-     * Existe para no pedir la lista paciente por paciente al exportar: con cien pacientes eso
-     * son cien viajes. El JOIN FETCH trae paciente, terapeuta (con su usuario, que es donde
-     * vive el nombre) y tipo de terapia ya resueltos, que es todo lo que el resumen muestra.
+     * Existe por dos razones. Una: pedir la lista paciente por paciente al exportar son cien
+     * viajes con cien pacientes. Dos: el recorte va aquí y no en el navegador, porque traerse
+     * el cuadro entero para tirar la mayor parte es cargar memoria por nada — el mismo criterio
+     * que en la agenda.
+     *
+     * Las condiciones son copia literal de PacienteRepository.buscarPaged: si divergen, el Excel
+     * de horarios dejaría de coincidir con el de pacientes, que es justo lo que se busca evitar.
+     *
+     * El JOIN FETCH trae paciente, terapeuta (con su usuario, que es donde vive el nombre) y
+     * tipo de terapia ya resueltos, que es todo lo que el resumen muestra.
      */
     @Query("""
         SELECT h FROM PacienteHorarioFijo h
@@ -74,9 +82,25 @@ public interface PacienteHorarioFijoRepository extends JpaRepository<PacienteHor
         LEFT JOIN FETCH t.usuario
         LEFT JOIN FETCH h.tipoTerapia
         WHERE h.activo = true
+          AND (CAST(:nombre AS string) IS NULL
+               OR LOWER(CONCAT(p.nombre, ' ', p.apellido)) LIKE LOWER(CONCAT('%', CAST(:nombre AS string), '%')))
+          AND (CAST(:dni AS string) IS NULL OR LOWER(p.dni) LIKE LOWER(CONCAT('%', CAST(:dni AS string), '%')))
+          AND (CAST(:correo AS string) IS NULL OR LOWER(p.correo) LIKE LOWER(CONCAT('%', CAST(:correo AS string), '%')))
+          AND (CAST(:sedeId AS long) IS NULL OR p.sede.id = :sedeId)
+          AND (CAST(:activo AS boolean) IS NULL OR p.activo = :activo)
+          AND (CAST(:terapeutaId AS long) IS NULL OR EXISTS (
+                SELECT 1 FROM Cita c WHERE c.paciente = p AND c.terapeuta.id = :terapeutaId
+              ))
+          AND (CAST(:creadoDesde AS timestamp) IS NULL OR p.createdAt >= :creadoDesde)
+          AND (CAST(:creadoHasta AS timestamp) IS NULL OR p.createdAt <= :creadoHasta)
         ORDER BY p.apellido, p.nombre, h.diaSemana, h.horaInicio
         """)
-    List<PacienteHorarioFijo> todosActivos();
+    List<PacienteHorarioFijo> buscar(@Param("nombre") String nombre, @Param("dni") String dni,
+                                     @Param("correo") String correo, @Param("sedeId") Long sedeId,
+                                     @Param("activo") Boolean activo,
+                                     @Param("terapeutaId") Long terapeutaId,
+                                     @Param("creadoDesde") java.time.LocalDateTime creadoDesde,
+                                     @Param("creadoHasta") java.time.LocalDateTime creadoHasta);
 
     @Query("DELETE FROM PacienteHorarioFijo h WHERE h.paciente.id = :pacienteId")
     @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true, clearAutomatically = true)

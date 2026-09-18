@@ -45,14 +45,24 @@ public class PacienteHorarioFijoService {
     }
 
     /**
-     * Todos los horarios fijos de la clínica, aplanados para leerlos en una tabla.
+     * Los horarios fijos de la clínica que cumplen los mismos filtros que el listado de
+     * pacientes, aplanados para leerlos en una tabla.
+     *
+     * Las fechas de alta se interpretan como días completos, igual que en PacienteService: si no,
+     * "hasta el 18" dejaría fuera a los dados de alta ese mismo día por la tarde.
      *
      * Se resuelve el nombre del terapeuta aquí y no en cada pantalla porque vive en su usuario,
      * no en la raíz del terapeuta, y cada consumidor que lo olvidaba mostraba un vacío.
      */
     @Transactional(readOnly = true)
-    public List<HorarioFijoResumenDTO> todos() {
-        return repository.todosActivos().stream().map(h -> {
+    public List<HorarioFijoResumenDTO> buscar(String nombre, String dni, String correo, Long sedeId,
+                                              Boolean activo, Long terapeutaId,
+                                              java.time.LocalDate creadoDesde, java.time.LocalDate creadoHasta) {
+        var lista = repository.buscar(blankToNull(nombre), blankToNull(dni), blankToNull(correo),
+                sedeId, activo, terapeutaId,
+                creadoDesde != null ? creadoDesde.atStartOfDay() : null,
+                creadoHasta != null ? creadoHasta.atTime(23, 59, 59) : null);
+        return lista.stream().map(h -> {
             var p = h.getPaciente();
             var t = h.getTerapeuta();
             return new HorarioFijoResumenDTO(
@@ -162,6 +172,10 @@ public class PacienteHorarioFijoService {
                 + (conQuien.isBlank() ? "" : " con " + conQuien)
                 + (nombres.size() == 1 ? " ya lo tiene " : " ya lo tienen ") + quienes + "."
                 + (cupo > 1 ? " Ese horario admite " + cupo + " pacientes y ya están tomados." : ""));
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     private static String nombreDe(Terapeuta t) {

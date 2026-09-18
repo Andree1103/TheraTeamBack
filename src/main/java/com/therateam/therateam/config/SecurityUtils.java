@@ -22,6 +22,24 @@ public final class SecurityUtils {
         }
     }
 
+    /**
+     * Si el usuario es un terapeuta restringido a sus propias citas (citasSoloPropias), su
+     * terapeutaId; null para todos los demás, que ven a todos los pacientes.
+     *
+     * Vive aquí y no en un controlador porque la consulta de pacientes y la de sus horarios
+     * fijos tienen que acotar igual: si una lo aplica y la otra no, el Excel de horarios
+     * enseñaría pacientes que esa persona no puede ver en pantalla.
+     *
+     * El -1L cuando falta el terapeutaId no es un descuido: es un id que no existe, y deja la
+     * lista vacía. Devolver null ahí abriría el listado entero a quien debería ver solo lo suyo.
+     */
+    public static Long restriccionTerapeutaId(Authentication auth) {
+        if (auth == null || !(auth.getDetails() instanceof io.jsonwebtoken.Claims claims)) return null;
+        if (!Boolean.TRUE.equals(claims.get("citasSoloPropias", Boolean.class))) return null;
+        Number terapeutaId = claims.get("terapeutaId", Number.class);
+        return terapeutaId != null ? terapeutaId.longValue() : -1L;
+    }
+
     /** true solo si el rol del usuario tiene activado el permiso de exportar a Excel. */
     public static boolean puedeExportar() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
