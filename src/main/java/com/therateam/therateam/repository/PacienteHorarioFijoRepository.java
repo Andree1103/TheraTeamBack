@@ -59,6 +59,25 @@ public interface PacienteHorarioFijoRepository extends JpaRepository<PacienteHor
                                                @Param("horaInicio") java.time.LocalTime horaInicio,
                                                @Param("excluirPacienteId") Long excluirPacienteId);
 
+    /**
+     * Todos los horarios activos de la clínica, en una sola consulta.
+     *
+     * Existe para no pedir la lista paciente por paciente al exportar: con cien pacientes eso
+     * son cien viajes. El JOIN FETCH trae paciente, terapeuta (con su usuario, que es donde
+     * vive el nombre) y tipo de terapia ya resueltos, que es todo lo que el resumen muestra.
+     */
+    @Query("""
+        SELECT h FROM PacienteHorarioFijo h
+        JOIN FETCH h.paciente p
+        LEFT JOIN FETCH p.sede
+        JOIN FETCH h.terapeuta t
+        LEFT JOIN FETCH t.usuario
+        LEFT JOIN FETCH h.tipoTerapia
+        WHERE h.activo = true
+        ORDER BY p.apellido, p.nombre, h.diaSemana, h.horaInicio
+        """)
+    List<PacienteHorarioFijo> todosActivos();
+
     @Query("DELETE FROM PacienteHorarioFijo h WHERE h.paciente.id = :pacienteId")
     @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true, clearAutomatically = true)
     void borrarDelPaciente(@Param("pacienteId") Long pacienteId);

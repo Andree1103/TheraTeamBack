@@ -1,6 +1,7 @@
 package com.therateam.therateam.service;
 
 import com.therateam.therateam.dto.HorarioFijoRequest;
+import com.therateam.therateam.dto.HorarioFijoResumenDTO;
 import com.therateam.therateam.model.PacienteHorarioFijo;
 import com.therateam.therateam.model.Terapeuta;
 import com.therateam.therateam.model.TipoTerapia;
@@ -41,6 +42,34 @@ public class PacienteHorarioFijoService {
     @Transactional(readOnly = true)
     public List<PacienteHorarioFijo> delTerapeuta(Long terapeutaId) {
         return repository.delTerapeuta(terapeutaId);
+    }
+
+    /**
+     * Todos los horarios fijos de la clínica, aplanados para leerlos en una tabla.
+     *
+     * Se resuelve el nombre del terapeuta aquí y no en cada pantalla porque vive en su usuario,
+     * no en la raíz del terapeuta, y cada consumidor que lo olvidaba mostraba un vacío.
+     */
+    @Transactional(readOnly = true)
+    public List<HorarioFijoResumenDTO> todos() {
+        return repository.todosActivos().stream().map(h -> {
+            var p = h.getPaciente();
+            var t = h.getTerapeuta();
+            return new HorarioFijoResumenDTO(
+                    h.getId(),
+                    p.getId(),
+                    (p.getNombre() + " " + p.getApellido()).trim(),
+                    p.getDni(),
+                    p.getSede() != null ? p.getSede().getNombre() : null,
+                    t != null ? t.getId() : null,
+                    nombreDe(t),
+                    h.getTipoTerapia() != null ? h.getTipoTerapia().getId() : null,
+                    h.getTipoTerapia() != null ? h.getTipoTerapia().getNombre() : null,
+                    h.getDiaSemana(),
+                    h.getHoraInicio(),
+                    h.getHoraFin(),
+                    h.getNotas());
+        }).toList();
     }
 
     /**
