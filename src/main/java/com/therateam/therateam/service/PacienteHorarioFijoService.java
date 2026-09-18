@@ -111,11 +111,8 @@ public class PacienteHorarioFijoService {
      */
     private void validarCasillaLibre(Long pacienteId, HorarioFijoRequest r,
                                      TipoTerapia tipo, Terapeuta terapeuta) {
-        // Sin hora de fin no hay rango que solapar: se compara como un punto, y la consulta
-        // cae en su rama de "misma hora exacta".
-        var finComparar = r.getHoraFin() != null ? r.getHoraFin() : r.getHoraInicio();
         var ocupantes = repository.enLaMismaCasilla(
-                r.getTerapeutaId(), r.getDiaSemana(), r.getHoraInicio(), finComparar, pacienteId);
+                r.getTerapeutaId(), r.getDiaSemana(), r.getHoraInicio(), pacienteId);
         if (ocupantes.isEmpty()) return;
 
         int cupo = (tipo != null && tipo.getMaxPacientes() != null && tipo.getMaxPacientes() > 0)
