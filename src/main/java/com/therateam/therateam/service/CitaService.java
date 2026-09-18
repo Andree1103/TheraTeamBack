@@ -831,17 +831,14 @@ public class CitaService {
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "Tipo de terapia no encontrado: " + input.getTipoKey()));
             }
-            // La duración y el precio dependen del tipo, así que viajan con él.
-            Integer duracionAcomp = input.getDuracionMinutos() != null
-                    ? input.getDuracionMinutos() : req.getDuracionMinutos();
-            LocalDateTime finAcomp = (req.getFechaInicio() != null && duracionAcomp != null)
-                    ? req.getFechaInicio().plusMinutes(duracionAcomp) : fechaFin;
-            java.math.BigDecimal precioAcomp = input.getPrecioPorSesion() != null
-                    ? input.getPrecioPorSesion() : req.getPrecioPorSesion();
 
+            // Duración, hora de fin y precio son los de la cita principal, aunque el tipo elegido
+            // tenga otros en el catálogo: es el MISMO bloque con el mismo terapeuta, así que
+            // termina cuando termina el bloque y se cobra lo que se acordó para él. Lo único que
+            // cambia entre los pacientes del bloque es la terapia que queda registrada.
             resultado.add(crearCitaParaPaciente(acompanante, terapeuta, tipoDelAcompanante, estadoCita, modalidad,
-                    req.getFechaInicio(), finAcomp, duracionAcomp, req.getObservacion(),
-                    precioAcomp, null, tipoRecurrencia, null, null));
+                    req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
+                    req.getPrecioPorSesion(), null, tipoRecurrencia, null, null));
         }
 
         return resultado;

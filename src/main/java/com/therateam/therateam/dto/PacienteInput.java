@@ -27,10 +27,11 @@ public class PacienteInput {
      * le imponía a todos el tipo de la cita principal, y en pantalla ni siquiera se podía elegir.
      *
      * Opcional: si no viene, se usa el de la cita principal, que es el caso habitual.
+     *
+     * DURACIÓN Y PRECIO NO SE SEPARAN. Aunque el tipo elegido tenga otra duración o otro precio
+     * de catálogo, la cita del acompañante hereda los de la cita principal: es el MISMO bloque
+     * con el mismo terapeuta, así que empieza y termina cuando ese bloque empieza y termina, y
+     * se cobra lo que se acordó para él. Lo que cambia es la terapia que queda registrada.
      */
     private String tipoKey;
-
-    /** Duración y precio propios, que dependen del tipo. Si no vienen, se heredan igual. */
-    private Integer duracionMinutos;
-    private java.math.BigDecimal precioPorSesion;
 }
