@@ -45,8 +45,26 @@ public class CitaService {
     private final SaldoMovimientoService saldoMovimientoService;
     private final com.therateam.therateam.repository.CitaHistorialRepository citaHistorialRepository;
 
-    /** Claves reales de "cancelada" en el catálogo — no existe una única key "CANCELADA". */
-    private static final List<String> ESTADOS_CANCELADOS = List.of("CANCELADA_PACIENTE", "CANCELADA_CLINICA");
+    /**
+     * Las claves que significan "esta cita ya no va".
+     *
+     * Hoy la única que se escribe es ANULADA: el porqué se guarda como texto en la cita, no como
+     * estados distintos. Las dos viejas se mantienen en la lista porque siguen existiendo en el
+     * catálogo (desactivadas) y bastaría una fila sin migrar para que una cita anulada volviera a
+     * contar como activa — bloqueando su horario y ensuciando las métricas.
+     */
+    private static final List<String> ESTADOS_CANCELADOS =
+            List.of("ANULADA", "CANCELADA_PACIENTE", "CANCELADA_CLINICA");
+
+    /**
+     * Estados en los que la cita ya no va a ocurrir y, por tanto, no ocupa su hueco.
+     *
+     * REPROGRAMADA se suma a las anuladas: la cita original se queda como constancia en su hora
+     * vieja, y si siguiera contando, esa hora quedaría bloqueada para siempre y ni la propia
+     * cita nueva podría ocuparla.
+     */
+    private static final List<String> ESTADOS_QUE_NO_OCUPAN =
+            List.of("ANULADA", "CANCELADA_PACIENTE", "CANCELADA_CLINICA", "REPROGRAMADA");
 
     public List<CitaDTO> findAll() {
         return citaRepository.findAllProjected(org.springframework.data.domain.Pageable.unpaged()).getContent();
@@ -132,7 +150,7 @@ public class CitaService {
         int atendidas = (int) citas.stream()
                 .filter(c -> c.getEstado() != null && "ASISTIDA".equals(c.getEstado().getKey())).count();
         int canceladas = (int) citas.stream()
-                .filter(c -> c.getEstado() != null && ESTADOS_CANCELADOS.contains(c.getEstado().getKey())).count();
+                .filter(c -> c.getEstado() != null && esCancelado(c.getEstado().getKey())).count();
         int pendientes = total - atendidas - canceladas;
         Integer totalPlaneado = citas.stream().map(Cita::getLoteTotalPlaneado)
                 .filter(java.util.Objects::nonNull).findFirst().orElse(null);
@@ -145,7 +163,7 @@ public class CitaService {
     private void validarCupoLote(String loteMasivoId, Integer totalPlaneado) {
         if (totalPlaneado == null) return;
         long activas = citaRepository.findByLoteMasivoIdAndEliminadoFalse(loteMasivoId).stream()
-                .filter(c -> c.getEstado() == null || !ESTADOS_CANCELADOS.contains(c.getEstado().getKey()))
+                .filter(c -> c.getEstado() == null || !esCancelado(c.getEstado().getKey()))
                 .count();
         if (activas >= totalPlaneado) {
             throw new IllegalArgumentException("Este grupo ya tiene todas sus citas creadas (" + activas + "/" + totalPlaneado + ").");
@@ -249,6 +267,26 @@ public class CitaService {
 
     public Cita save(Cita cita) { return citaRepository.save(cita); }
 
+    /**
+     * La clave del estado que viene en el cuerpo de un PUT.
+     *
+     * El front lo manda como {"estado": {"id": 9}} para que Hibernate resuelva la FK, así que la
+     * entidad que llega trae el id y el resto en null: leer getKey() daba siempre null. Eso hacía
+     * que al editar una cita ASISTIDA sin cambiarle el estado se creyera que salía de ASISTIDA y
+     * se borrara su atención clínica. Se resuelve contra el catálogo.
+     */
+    private String keyDelEstado(CatEstadoCita estado) {
+        if (estado == null) return null;
+        if (estado.getKey() != null) return estado.getKey();
+        return estado.getId() == null ? null
+                : catEstadoCitaRepository.findById(estado.getId()).map(CatEstadoCita::getKey).orElse(null);
+    }
+
+    /** List.of() lanza NullPointerException al preguntarle por null, y aquí la clave puede faltar. */
+    private static boolean esCancelado(String estadoKey) {
+        return estadoKey != null && ESTADOS_CANCELADOS.contains(estadoKey);
+    }
+
     /** Transaccional porque al salir de ASISTIDA se borra la atención y se reajusta el paquete:
      *  o pasa todo, o no pasa nada. */
     @Transactional
@@ -288,7 +326,24 @@ public class CitaService {
             // Salir de ASISTIDA deshace lo que hizo el registro de la atención: si no, la atención
             // quedaba huérfana (visible en el perfil del paciente) y la sesión seguía contando como
             // atendida en su paquete.
-            String estadoNuevoKey = data.getEstado() != null ? data.getEstado().getKey() : null;
+            String estadoNuevoKey = keyDelEstado(data.getEstado());
+
+            // Anular NO es un cambio de estado más: devuelve el dinero, libera la sesión y exige
+            // un motivo. Cuando "cancelada" era una opción del desplegable, elegirla desde aquí se
+            // saltaba todo eso y dejaba la cita muerta con el pago aplicado. Se atiende por
+            // /anular, que es el único camino que hace las tres cosas.
+            if (esCancelado(estadoNuevoKey) && !esCancelado(estadoOriginalKey)) {
+                throw new IllegalArgumentException(
+                        "Para anular una cita usa el botón Anular: hay que resolver el pago e indicar el motivo.");
+            }
+
+            // Lo mismo con reprogramar: marcarla a mano dejaba la cita muerta en su hora vieja sin
+            // crear la nueva, y sin decir a dónde se movió ni por qué.
+            if ("REPROGRAMADA".equals(estadoNuevoKey) && !"REPROGRAMADA".equals(estadoOriginalKey)) {
+                throw new IllegalArgumentException(
+                        "Para mover una cita usa el botón Reprogramar: hay que indicar la nueva fecha y el motivo.");
+            }
+
             if ("ASISTIDA".equals(estadoOriginalKey) && !"ASISTIDA".equals(estadoNuevoKey)) {
                 revertirAtencion(e);
             }
@@ -373,7 +428,7 @@ public class CitaService {
     }
 
     /**
-     * Anula la cita (queda en un estado CANCELADA_*, visible en agendas como cancelada, y libera
+     * Anula la cita (queda ANULADA con su motivo, visible en agendas como anulada, y libera
      * el horario/sesión) y resuelve el dinero según `tipoDevolucion`:
      * - "SALDO" (default): el monto ya aplicado se retira de la deuda pero no desaparece, pasa a
      *   quedar como saldo a favor del paciente para su próxima cita/paquete.
@@ -386,10 +441,11 @@ public class CitaService {
      * No se puede anular una cita ya ASISTIDA (para eso hay que deshacer la atención primero).
      */
     @Transactional
-    public Optional<CitaDTO> anular(Long id, String tipoDevolucion, Long metodoId) {
+    public Optional<CitaDTO> anular(Long id, String tipoDevolucion, Long metodoId, String motivo) {
+        String motivoLimpio = exigirMotivo(motivo, "anulación");
         return citaRepository.findById(id).map(cita -> {
             validarAnulable(cita);
-            anularCitaInterna(cita, tipoDevolucion, metodoId);
+            anularCitaInterna(cita, tipoDevolucion, metodoId, motivoLimpio);
             Cita saved = citaRepository.save(cita);
             sesionRepository.desvincularCitaActiva(id);
             return toDTO(saved);
@@ -397,11 +453,29 @@ public class CitaService {
     }
 
     /**
+     * El motivo es obligatorio: sin él la anulación no dice nada.
+     *
+     * Antes el "por qué" vivía en el estado (por paciente / por clínica) y siempre estaba, aunque
+     * fuera a grandes rasgos. Al pasarlo a texto, dejarlo opcional sería cambiarlo por nada.
+     *
+     * Lo comparten anular y reprogramar; `queSeHace` es solo para que el aviso nombre lo que se
+     * está haciendo.
+     */
+    private static String exigirMotivo(String motivo, String queSeHace) {
+        if (motivo == null || motivo.isBlank()) {
+            throw new IllegalArgumentException("Indica el motivo de la " + queSeHace + ".");
+        }
+        String limpio = motivo.trim();
+        return limpio.length() > 255 ? limpio.substring(0, 255) : limpio;
+    }
+
+    /**
      * Anula TODAS las citas pendientes (no ASISTIDA, no ya canceladas) de un paquete, con el mismo
      * criterio de devolución que {@link #anular}. Las sesiones ya atendidas no se tocan.
      */
     @Transactional
-    public List<CitaDTO> anularPaquete(Long tratamientoId, String tipoDevolucion, Long metodoId) {
+    public List<CitaDTO> anularPaquete(Long tratamientoId, String tipoDevolucion, Long metodoId, String motivo) {
+        String motivoLimpio = exigirMotivo(motivo, "anulación");
         if (!tratamientoRepository.existsById(tratamientoId)) {
             throw new IllegalArgumentException("Paquete no encontrado: " + tratamientoId);
         }
@@ -410,9 +484,9 @@ public class CitaService {
             Cita cita = s.getCitaActiva();
             if (cita == null) continue;
             String estadoActual = cita.getEstado() != null ? cita.getEstado().getKey() : null;
-            if ("ASISTIDA".equals(estadoActual) || ESTADOS_CANCELADOS.contains(estadoActual)) continue;
+            if ("ASISTIDA".equals(estadoActual) || esCancelado(estadoActual)) continue;
 
-            anularCitaInterna(cita, tipoDevolucion, metodoId);
+            anularCitaInterna(cita, tipoDevolucion, metodoId, motivoLimpio);
             Cita saved = citaRepository.save(cita);
             sesionRepository.desvincularCitaActiva(cita.getId());
             resultado.add(toDTO(saved));
@@ -425,13 +499,18 @@ public class CitaService {
         if ("ASISTIDA".equals(estadoActual)) {
             throw new IllegalArgumentException("No se puede anular una cita que ya fue atendida.");
         }
-        if (ESTADOS_CANCELADOS.contains(estadoActual)) {
+        if (esCancelado(estadoActual)) {
             throw new IllegalArgumentException("Esta cita ya está anulada.");
+        }
+        // La original de una reprogramación ya no tiene dinero ni sesión: anularla no devolvería
+        // nada y dejaría sin explicación a la cita nueva, que sí sigue en pie.
+        if ("REPROGRAMADA".equals(estadoActual)) {
+            throw new IllegalArgumentException("Esta cita ya se reprogramó. Anula la cita nueva.");
         }
     }
 
-    /** Revierte el dinero de una cita (suelta o de paquete) y la deja CANCELADA_CLINICA. */
-    private void anularCitaInterna(Cita cita, String tipoDevolucion, Long metodoId) {
+    /** Revierte el dinero de una cita (suelta o de paquete) y la deja ANULADA con su motivo. */
+    private void anularCitaInterna(Cita cita, String tipoDevolucion, Long metodoId, String motivo) {
         boolean devolverComoDinero = "DINERO".equalsIgnoreCase(tipoDevolucion);
 
         if (cita.getSesion() != null && cita.getSesion().getTratamiento() != null) {
@@ -470,9 +549,144 @@ public class CitaService {
             }
         }
 
-        CatEstadoCita cancelada = catEstadoCitaRepository.findByKey("CANCELADA_CLINICA")
-                .orElseThrow(() -> new IllegalStateException("No existe el estado CANCELADA_CLINICA en el catálogo."));
-        cita.setEstado(cancelada);
+        CatEstadoCita anulada = catEstadoCitaRepository.findByKey("ANULADA")
+                .orElseThrow(() -> new IllegalStateException("No existe el estado ANULADA en el catálogo."));
+        CatEstadoCita estadoPrevio = cita.getEstado();
+        cita.setEstado(anulada);
+        cita.setMotivoEstado(motivo);
+        registrarAnulacion(cita, estadoPrevio, anulada, motivo);
+    }
+
+    /**
+     * Deja la anulación en cita_historial, además del motivo que queda en la propia cita.
+     *
+     * Los dos sitios dicen cosas distintas: la cita responde "por qué está anulada" de un vistazo
+     * y el historial, "quién la anuló, cuándo y desde qué estado". Perder el segundo dejaría sin
+     * rastro una operación que mueve dinero.
+     */
+    private void registrarAnulacion(Cita cita, CatEstadoCita anterior, CatEstadoCita nuevo, String motivo) {
+        CitaHistorial h = new CitaHistorial();
+        h.setCita(cita);
+        h.setEstadoAnterior(anterior);
+        h.setEstadoNuevo(nuevo);
+        h.setFechaAnterior(cita.getFechaInicio());
+        h.setFechaNueva(cita.getFechaInicio());
+        h.setCanal("ANULACION");
+        h.setMotivo(motivo);
+        citaHistorialRepository.save(h);
+    }
+
+    /**
+     * Mueve una cita a otro momento: la original se queda donde estaba, marcada REPROGRAMADA y con
+     * su motivo, y nace una cita nueva que hereda todo lo demás y apunta a ella.
+     *
+     * POR QUÉ DOS CITAS Y NO CAMBIARLE LA FECHA: cambiar la fecha borra el pasado. Nadie puede
+     * responder después "¿cuándo era esta cita y por qué se movió?", que es justo lo que se
+     * pregunta cuando un paciente reclama o cuando hay que contar cuánto se reprograma.
+     *
+     * EL DINERO VIAJA CON LA CITA. Si estaba pagada, el pago queda contra la cita nueva: si se
+     * quedara en la original, la nueva aparecería sin pagar y se le cobraría dos veces al
+     * paciente. Reprogramar no mueve dinero, solo cambia a qué cita está aplicado.
+     *
+     * La sesión del paquete también pasa a la cita nueva: es la misma sesión contratada, no una
+     * de más.
+     */
+    @Transactional
+    public CitaDTO reprogramar(Long id, com.therateam.therateam.dto.ReprogramarCitaRequest req) {
+        String motivo = exigirMotivo(req.getMotivo(), "reprogramación");
+        Cita original = citaRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Cita no encontrada: " + id));
+
+        String estadoActual = original.getEstado() != null ? original.getEstado().getKey() : null;
+        if ("ASISTIDA".equals(estadoActual)) {
+            throw new IllegalArgumentException("No se puede reprogramar una cita que ya fue atendida.");
+        }
+        if (esCancelado(estadoActual)) {
+            throw new IllegalArgumentException("Esta cita está anulada: no se puede reprogramar.");
+        }
+        if ("REPROGRAMADA".equals(estadoActual)) {
+            throw new IllegalArgumentException("Esta cita ya se reprogramó. Reprograma la cita nueva.");
+        }
+        if (req.getFechaInicio() == null) {
+            throw new IllegalArgumentException("Indica la nueva fecha y hora.");
+        }
+
+        Terapeuta terapeuta = req.getTerapeutaId() != null
+                ? terapeutaRepository.findById(req.getTerapeutaId())
+                        .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado: " + req.getTerapeutaId()))
+                : original.getTerapeuta();
+
+        int duracion = req.getDuracionMinutos() != null ? req.getDuracionMinutos()
+                : (original.getDuracionMinutos() != null ? original.getDuracionMinutos() : 45);
+        LocalDateTime inicio = req.getFechaInicio();
+        LocalDateTime fin = req.getFechaFin() != null ? req.getFechaFin() : inicio.plusMinutes(duracion);
+
+        validarFechaNoPasada(inicio);
+
+        TipoTerapia tipo = original.getTipoTerapia() != null ? original.getTipoTerapia()
+                : (original.getSesion() != null && original.getSesion().getTratamiento() != null
+                    ? original.getSesion().getTratamiento().getTipoTerapia() : null);
+        // Se excluye la original de las dos validaciones: está a punto de dejar de ocupar su hueco,
+        // y sin excluirla una cita no se podría mover treinta minutos porque chocaría consigo misma.
+        validarDisponibilidad(terapeuta, inicio, fin, tipo != null ? tipo.getMaxPacientes() : null, id);
+        validarPacienteDisponible(original.getPaciente(), inicio, fin, id);
+
+        Cita nueva = new Cita();
+        nueva.setPaciente(original.getPaciente());
+        nueva.setTerapeuta(terapeuta);
+        nueva.setTipoTerapia(original.getTipoTerapia());
+        nueva.setModalidad(original.getModalidad());
+        nueva.setSesion(original.getSesion());
+        nueva.setPrecio(original.getPrecio());
+        nueva.setMontoPagado(original.getMontoPagado());
+        nueva.setEstadoPago(original.getEstadoPago());
+        nueva.setNotasPrevias(original.getNotasPrevias());
+        nueva.setLinkVideollamada(original.getLinkVideollamada());
+        nueva.setTipoRecurrencia(original.getTipoRecurrencia());
+        nueva.setFechaInicio(inicio);
+        nueva.setFechaFin(fin);
+        nueva.setDuracionMinutos(duracion);
+        nueva.setRecordatorioEnviado(false);
+        nueva.setReprogramacionDe(original);
+        nueva.setEstado(catEstadoCitaRepository.findByKey("PROGRAMADA")
+                .orElseThrow(() -> new IllegalStateException("No existe el estado PROGRAMADA en el catálogo.")));
+        Cita guardada = citaRepository.save(nueva);
+
+        // Los pagos pasan a la cita nueva. Las devoluciones y los cobros adicionales se quedan
+        // donde ocurrieron: son movimientos cerrados, no el pago de esta sesión.
+        for (Pago pago : pagoRepository.findByCitaId(original.getId())) {
+            if (Boolean.TRUE.equals(pago.getEsDevolucion()) || Boolean.TRUE.equals(pago.getEsAdicional())) continue;
+            pago.setCita(guardada);
+            pagoRepository.save(pago);
+        }
+
+        if (original.getSesion() != null) {
+            Sesion sesion = original.getSesion();
+            sesion.setCitaActiva(guardada);
+            sesionRepository.save(sesion);
+        }
+
+        CatEstadoCita reprogramada = catEstadoCitaRepository.findByKey("REPROGRAMADA")
+                .orElseThrow(() -> new IllegalStateException("No existe el estado REPROGRAMADA en el catálogo."));
+        CatEstadoCita estadoPrevio = original.getEstado();
+        original.setEstado(reprogramada);
+        original.setMotivoEstado(motivo);
+        original.setMontoPagado(BigDecimal.ZERO);
+        original.setEstadoPago(catEstadoPagoCitaRepository.findByKey("SIN_PAGO").orElse(null));
+        original.setSesion(null);
+        citaRepository.save(original);
+
+        CitaHistorial h = new CitaHistorial();
+        h.setCita(original);
+        h.setEstadoAnterior(estadoPrevio);
+        h.setEstadoNuevo(reprogramada);
+        h.setFechaAnterior(original.getFechaInicio());
+        h.setFechaNueva(inicio);
+        h.setCanal("REPROGRAMACION");
+        h.setMotivo(motivo);
+        citaHistorialRepository.save(h);
+
+        return toDTO(guardada);
     }
 
     private void sumarSaldoAFavor(Paciente paciente, BigDecimal monto) {
@@ -681,7 +895,15 @@ public class CitaService {
             tratamientoRepository.save(tratamiento);
         }
 
-        // Actualizar estado_pago de la cita
+        // El monto cobrado tambien se guarda en la cita, no solo en la fila de Pago.
+        //
+        // Faltaba: la cita quedaba marcada PAGADA con monto_pagado en 0, y es ese campo el que
+        // leen la anulacion (para saber cuanto devolver) y la reprogramacion (para llevarse el
+        // dinero a la cita nueva). Cobrado por "Registrar pago" si se llenaba, porque ese camino
+        // pasa por PagoService; cobrado al crear la cita, no.
+        if (req.isPagadoInmediato()) {
+            cita.setMontoPagado(monto);
+        }
         String keyEstadoPago = req.isPagadoInmediato() ? "PAGADA" : "SIN_PAGO";
         CatEstadoPagoCita estadoPago = catEstadoPagoCitaRepository.findByKey(keyEstadoPago).orElse(null);
         cita.setEstadoPago(estadoPago);
@@ -944,9 +1166,9 @@ public class CitaService {
         int capacidad = (maxPacientes != null && maxPacientes > 0) ? maxPacientes : 1;
         List<Cita> solapadas = excluirCitaId != null
                 ? citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndIdNotAndEliminadoFalse(
-                        terapeuta.getId(), fin, inicio, ESTADOS_CANCELADOS, excluirCitaId)
+                        terapeuta.getId(), fin, inicio, ESTADOS_QUE_NO_OCUPAN, excluirCitaId)
                 : citaRepository.findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
-                        terapeuta.getId(), fin, inicio, ESTADOS_CANCELADOS);
+                        terapeuta.getId(), fin, inicio, ESTADOS_QUE_NO_OCUPAN);
         if (solapadas.size() >= capacidad) {
             throw new IllegalArgumentException("El terapeuta ya tiene el cupo completo en ese horario.");
         }
@@ -961,9 +1183,9 @@ public class CitaService {
 
         List<Cita> solapadas = excluirCitaId != null
                 ? citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndIdNotAndEliminadoFalse(
-                        paciente.getId(), fin, inicio, ESTADOS_CANCELADOS, excluirCitaId)
+                        paciente.getId(), fin, inicio, ESTADOS_QUE_NO_OCUPAN, excluirCitaId)
                 : citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
-                        paciente.getId(), fin, inicio, ESTADOS_CANCELADOS);
+                        paciente.getId(), fin, inicio, ESTADOS_QUE_NO_OCUPAN);
         if (!solapadas.isEmpty()) {
             throw new IllegalArgumentException("El paciente ya tiene otra cita en ese horario — no puede estar en dos sesiones a la vez.");
         }
@@ -979,6 +1201,8 @@ public class CitaService {
         dto.setNotasPrevias(c.getNotasPrevias());
         dto.setRecordatorioEnviado(c.getRecordatorioEnviado());
         dto.setTipoRecurrencia(c.getTipoRecurrencia());
+        dto.setMotivoEstado(c.getMotivoEstado());
+        if (c.getReprogramacionDe() != null) dto.setReprogramacionDe(c.getReprogramacionDe().getId());
         dto.setPrecio(c.getPrecio());
         dto.setMontoPagado(c.getMontoPagado());
         dto.setLoteMasivoId(c.getLoteMasivoId());

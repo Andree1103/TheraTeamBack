@@ -18,7 +18,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
 
     /**
      * Citas del terapeuta que se solapan con [fechaInicio, fechaFin), excluyendo un estado
-     * (ej. CANCELADA), las eliminadas lógicamente, y opcionalmente excluyendo la propia cita
+     * (ej. ANULADA), las eliminadas lógicamente, y opcionalmente excluyendo la propia cita
      * (para updates) — una cita eliminada no debe seguir bloqueando ese horario.
      */
     List<Cita> findByTerapeutaIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndIdNotAndEliminadoFalse(
@@ -59,7 +59,9 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
              WHERE pg2.id = (SELECT MAX(pg3.id) FROM Pago pg3
                               WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)),
             c.loteMasivoId,
-            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
+            c.motivoEstado, rp.id,
+            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false)
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -71,6 +73,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.estado e
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
+        LEFT JOIN c.reprogramacionDe rp
         WHERE c.eliminado = false
         """)
     Page<CitaDTO> findAllProjected(Pageable pageable);
@@ -94,7 +97,9 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             c.tipoRecurrencia, c.precio, c.montoPagado, t.id, t.nombre,
             mUlt.nombre,
             c.loteMasivoId,
-            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
+            c.motivoEstado, rp.id,
+            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false)
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -110,6 +115,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.estado e
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
+        LEFT JOIN c.reprogramacionDe rp
         WHERE c.eliminado = false
           AND (CAST(:fechaInicio AS timestamp) IS NULL OR c.fechaInicio >= :fechaInicio)
           AND (CAST(:fechaFin AS timestamp) IS NULL OR c.fechaInicio <= :fechaFin)
@@ -159,7 +165,9 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
              WHERE pg2.id = (SELECT MAX(pg3.id) FROM Pago pg3
                               WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)),
             c.loteMasivoId,
-            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
+            c.motivoEstado, rp.id,
+            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false)
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -171,6 +179,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.estado e
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
+        LEFT JOIN c.reprogramacionDe rp
         WHERE c.id = :id
         """)
     java.util.Optional<CitaDTO> findByIdProjected(@Param("id") Long id);
@@ -195,7 +204,9 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
              WHERE pg2.id = (SELECT MAX(pg3.id) FROM Pago pg3
                               WHERE pg3.cita = c AND pg3.esDevolucion = false AND pg3.esAdicional = false)),
             c.loteMasivoId,
-            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId)
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
+            c.motivoEstado, rp.id,
+            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false)
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -207,6 +218,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.estado e
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
+        LEFT JOIN c.reprogramacionDe rp
         WHERE p.id = :pacienteId AND c.eliminado = false
         ORDER BY c.fechaInicio DESC
         """)

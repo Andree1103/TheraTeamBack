@@ -24,7 +24,11 @@ public class CitaDTO {
                     String estadoPagoKey, String estadoPagoNombre, String estadoPagoColor,
                     String tipoRecurrencia, BigDecimal precio, BigDecimal montoPagado,
                     Long tratamientoId, String tratamientoNombre, String metodoPagoNombre, String loteMasivoId,
-                    String usuarioCreacionNombre) {
+                    String usuarioCreacionNombre, String motivoEstado, Long reprogramacionDe,
+                    Long reprogramadaEn) {
+        this.motivoEstado = motivoEstado;
+        this.reprogramacionDe = reprogramacionDe;
+        this.reprogramadaEn = reprogramadaEn;
         this.id = id;
         this.sesionId = sesionId;
         this.numeroSesion = numeroSesion;
@@ -141,6 +145,18 @@ public class CitaDTO {
 
     @JsonProperty("estado_pago_color")
     private String estadoPagoColor;
+
+    /** Por qué la cita se anuló o se reprogramó — vacío en el resto de estados. */
+    @JsonProperty("motivo_estado")
+    private String motivoEstado;
+
+    /** Id de la cita de la que sale esta, cuando nace de una reprogramación. */
+    @JsonProperty("reprogramacion_de")
+    private Long reprogramacionDe;
+
+    /** Id de la cita que sustituye a esta, cuando se reprogramó. El rastro, en los dos sentidos. */
+    @JsonProperty("reprogramada_en")
+    private Long reprogramadaEn;
 
     @JsonProperty("tipo_recurrencia")
     private String tipoRecurrencia;

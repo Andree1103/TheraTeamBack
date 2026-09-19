@@ -26,7 +26,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DisponibilidadService {
 
-    private static final List<String> ESTADOS_CANCELADOS = List.of("CANCELADA_PACIENTE", "CANCELADA_CLINICA");
+    /**
+     * Las claves que significan "esta cita ya no va" — no ocupan horario.
+     *
+     * Hoy solo se escribe ANULADA; las dos viejas siguen aquí porque una sola fila sin migrar
+     * bastaría para que una cita anulada siguiera bloqueando su hora. REPROGRAMADA entra por lo
+     * mismo: la cita original se queda en su hora vieja como constancia, y esa hora está libre.
+     */
+    private static final List<String> ESTADOS_CANCELADOS =
+            List.of("ANULADA", "CANCELADA_PACIENTE", "CANCELADA_CLINICA", "REPROGRAMADA");
     private static final long SEGUNDOS_DIA = 86_400L;
 
     private final TerapeutaHorarioRepository horarioRepository;
@@ -68,6 +76,15 @@ public class DisponibilidadService {
      *                      (uso: revalidar una cita que se está reprogramando/editando).
      */
     public DisponibilidadDiaDTO obtenerDisponibilidadDia(Long terapeutaId, LocalDate fecha, Long excluirCitaId) {
+        return obtenerDisponibilidadDia(terapeutaId, fecha, excluirCitaId, null);
+    }
+
+    /**
+     * @param cupoDeseado cuantos pacientes admite a la vez la cita que se quiere COLOCAR ahi.
+     *                    Con null se mira el cupo de las citas que ya estan (ver intervalosSinCupo).
+     */
+    public DisponibilidadDiaDTO obtenerDisponibilidadDia(Long terapeutaId, LocalDate fecha, Long excluirCitaId,
+                                                          Integer cupoDeseado) {
         int diaSemana = fecha.getDayOfWeek().getValue(); // 1=lunes .. 7=domingo
         List<long[]> franjas = franjasHorarioYExcepciones(terapeutaId, fecha);
 
@@ -80,7 +97,7 @@ public class DisponibilidadService {
                         terapeutaId, finDia, inicioDia, ESTADOS_CANCELADOS);
         // Solo se resta lo que ya NO tiene cupo: una cita sola no tapa el slot si su tipo
         // admite varios pacientes (ver intervalosSinCupo).
-        for (long[] lleno : intervalosSinCupo(citas, fecha)) {
+        for (long[] lleno : intervalosSinCupo(citas, fecha, cupoDeseado)) {
             franjas = restar(franjas, lleno[0], lleno[1]);
         }
 
@@ -105,8 +122,12 @@ public class DisponibilidadService {
      *
      * Se barre por tramos (no por cita) porque dos citas pueden solaparse parcialmente y traer
      * cupos distintos: en cada tramo manda el cupo mas chico de las citas que lo cubren.
+     *
+     * Cuando se pregunta PARA una cita concreta (reprogramar, o el formulario con un tipo ya
+     * elegido) el que manda es el cupo de esa cita: es la regla que aplica la validacion al
+     * guardar, y la lista de horarios tiene que decir lo mismo que el guardado.
      */
-    private List<long[]> intervalosSinCupo(List<Cita> citas, LocalDate fecha) {
+    private List<long[]> intervalosSinCupo(List<Cita> citas, LocalDate fecha, Integer cupoDeseado) {
         // {inicio, fin, cupo} por cita
         List<long[]> ocupaciones = new ArrayList<>();
         java.util.TreeSet<Long> cortes = new java.util.TreeSet<>();
@@ -136,7 +157,13 @@ public class DisponibilidadService {
                     cupoMin = Math.min(cupoMin, o[2]);
                 }
             }
-            if (cuantas > 0 && cuantas >= cupoMin) llenos.add(new long[]{a, b});
+            // Con cupoDeseado manda el cupo de la cita que se quiere poner, que es exactamente
+            // lo que mira validarDisponibilidad al guardar. Sin esto, el tramo se daba por libre
+            // mirando el cupo de las citas que ya estaban: una Terapia Fisica (2 pacientes) sola
+            // en su hora dejaba el hueco "libre" para una terapia de 1 paciente, y al elegirlo
+            // saltaba "el terapeuta ya tiene el cupo completo en ese horario".
+            long tope = (cupoDeseado != null && cupoDeseado > 0) ? cupoDeseado : cupoMin;
+            if (cuantas > 0 && cuantas >= tope) llenos.add(new long[]{a, b});
         }
         return llenos;
     }

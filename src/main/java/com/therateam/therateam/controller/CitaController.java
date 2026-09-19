@@ -157,19 +157,38 @@ public class CitaController {
     }
 
     /**
-     * POST /api/citas/{id}/anular?devolucion=SALDO|DINERO&metodoId=1 — cancela la cita y
+     * POST /api/citas/{id}/anular?devolucion=SALDO|DINERO&metodoId=1&motivo=... — anula la cita y
      * resuelve el dinero: SALDO (default) lo deja como saldo a favor del paciente; DINERO
      * registra una devolución auditable (el pago original nunca se borra). `metodoId` es
      * opcional — solo aplica a citas de paquete cuando no se puede inferir del historial.
+     * `motivo` es OBLIGATORIO: es lo que sustituye a los antiguos estados "cancelada por
+     * paciente" y "cancelada por clínica". Se declara como no requerido para responder 400 con
+     * un mensaje entendible en vez del error genérico de parámetro faltante.
      */
     @PreAuthorize("hasAuthority('MODULO_CITAS_ELIMINAR')")
     @PostMapping("/{id}/anular")
     public ResponseEntity<CitaDTO> anular(@PathVariable Long id,
                                            @RequestParam(defaultValue = "SALDO") String devolucion,
-                                           @RequestParam(required = false) Long metodoId) {
-        return service.anular(id, devolucion, metodoId)
+                                           @RequestParam(required = false) Long metodoId,
+                                           @RequestParam(required = false) String motivo) {
+        return service.anular(id, devolucion, metodoId, motivo)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * POST /api/citas/{id}/reprogramar — deja la cita original como constancia (REPROGRAMADA, con
+     * su motivo) y crea la cita nueva, que hereda paciente, terapia, precio y pago, y apunta a la
+     * original por reprogramacion_de. Devuelve la cita NUEVA, que es la que sigue viva.
+     *
+     * Pide el permiso de EDITAR y no el de ELIMINAR (que es el de anular): mover una cita de hora
+     * es parte del trabajo diario de quien maneja la agenda, no una operación excepcional.
+     */
+    @PreAuthorize("hasAuthority('MODULO_CITAS_EDITAR')")
+    @PostMapping("/{id}/reprogramar")
+    public ResponseEntity<CitaDTO> reprogramar(@PathVariable Long id,
+                                                @RequestBody com.therateam.therateam.dto.ReprogramarCitaRequest req) {
+        return ResponseEntity.ok(service.reprogramar(id, req));
     }
 
     /**

@@ -99,15 +99,17 @@ public class TratamientoController {
     }
 
     /**
-     * POST /api/tratamientos/{id}/anular?devolucion=SALDO|DINERO&metodoId=1 — anula TODAS las
-     * citas pendientes del paquete (no toca las ya ASISTIDA ni las ya canceladas) y resuelve el
-     * dinero de cada una igual que anular una cita suelta.
+     * POST /api/tratamientos/{id}/anular?devolucion=SALDO|DINERO&metodoId=1&motivo=... — anula
+     * TODAS las citas pendientes del paquete (no toca las ya ASISTIDA ni las ya anuladas) y
+     * resuelve el dinero de cada una igual que anular una cita suelta. El motivo es obligatorio y
+     * se copia a todas: se anula el paquete por una razón, no una distinta por sesión.
      */
     @PreAuthorize("hasAuthority('MODULO_PAQUETES_ELIMINAR') and hasAuthority('MODULO_CITAS_ELIMINAR')")
     @PostMapping("/{id}/anular")
     public ResponseEntity<List<CitaDTO>> anular(@PathVariable Long id,
                                                  @RequestParam(defaultValue = "SALDO") String devolucion,
-                                                 @RequestParam(required = false) Long metodoId) {
-        return ResponseEntity.ok(citaService.anularPaquete(id, devolucion, metodoId));
+                                                 @RequestParam(required = false) Long metodoId,
+                                                 @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(citaService.anularPaquete(id, devolucion, metodoId, motivo));
     }
 }

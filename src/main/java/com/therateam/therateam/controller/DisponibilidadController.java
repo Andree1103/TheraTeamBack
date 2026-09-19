@@ -16,11 +16,20 @@ public class DisponibilidadController {
 
     private final DisponibilidadService service;
 
-    /** GET /api/terapeutas/{id}/disponibilidad?fecha=2026-07-10 */
+    /**
+     * GET /api/terapeutas/{id}/disponibilidad?fecha=2026-07-10&excluirCitaId=12&cupo=2
+     *
+     * `cupo` es cuantos pacientes admite a la vez la cita que se quiere colocar: sin el, un hueco
+     * con una cita de un tipo que admite dos se ofrece como libre aunque la cita que se va a
+     * poner solo admita uno, y el guardado la rechaza. `excluirCitaId` ignora una cita al medir
+     * la ocupacion — al mover una cita, la que se mueve no debe estorbarse a si misma.
+     */
     @GetMapping
     public DisponibilidadDiaDTO getDia(@PathVariable Long terapeutaId,
-                                        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
-        return service.obtenerDisponibilidadDia(terapeutaId, fecha);
+                                        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+                                        @RequestParam(required = false) Long excluirCitaId,
+                                        @RequestParam(required = false) Integer cupo) {
+        return service.obtenerDisponibilidadDia(terapeutaId, fecha, excluirCitaId, cupo);
     }
 
     /** GET /api/terapeutas/{id}/disponibilidad/semana?desde=2026-07-06&hasta=2026-07-12 */

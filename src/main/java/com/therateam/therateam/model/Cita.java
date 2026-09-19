@@ -76,6 +76,20 @@ public class Cita {
     @JoinColumn(name = "estado_pago_id")
     private CatEstadoPagoCita estadoPago;
 
+    /**
+     * Por qué la cita no se hizo como estaba: el motivo de la anulación o el de la reprogramación.
+     * Tiene valor cuando el estado es ANULADA o REPROGRAMADA.
+     *
+     * Antes esto vivía en el estado: había "Cancelada por paciente" y "Cancelada por clínica",
+     * dos estados para un mismo hecho con dos motivos. Cada motivo nuevo pedía otro estado y otra
+     * clave que enseñarle al código; escrito, el motivo no obliga a tocar nada.
+     *
+     * Un campo y no dos porque el estado ya distingue el caso: con motivo_anulacion y
+     * motivo_reprogramacion habría que mirar el estado para saber cuál leer.
+     */
+    @Column(name = "motivo_estado", length = 255)
+    private String motivoEstado;
+
     private String linkVideollamada;
     private String notasPrevias;
     private Boolean recordatorioEnviado;

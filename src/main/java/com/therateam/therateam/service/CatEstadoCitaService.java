@@ -16,6 +16,13 @@ public class CatEstadoCitaService {
 
     public List<CatEstadoCita> findAll() { return repository.findAll(); }
 
+    /** Los que se pueden elegir hoy. Los retirados siguen en la tabla por las FKs que los apuntan. */
+    public List<CatEstadoCita> findActivos() {
+        return repository.findAll().stream()
+                .filter(e -> !Boolean.FALSE.equals(e.getActivo()))
+                .toList();
+    }
+
     public Optional<CatEstadoCita> findById(Long id) { return repository.findById(id); }
 
     public CatEstadoCita save(CatEstadoCita estado) { return repository.save(estado); }

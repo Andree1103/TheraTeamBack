@@ -138,9 +138,24 @@ public class PagoService {
         // resuelto — un "adelanto general" sin ninguno de los dos no toca ninguna cita.
         boolean resueltoPorAdelanto = false;
 
-        if (p.getTratamiento() != null && p.getTratamiento().getId() != null) {
-            tratamiento = tratamientoRepository.findById(p.getTratamiento().getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Tratamiento no encontrado"));
+        // El paquete al que se abona lo manda la cita, no quien llama.
+        //
+        // Si el pago es de una cita que pertenece a un paquete, ese es el paquete que se cobra,
+        // aunque en el cuerpo venga otro. La pantalla mandaba el paquete MAS RECIENTE del
+        // paciente: con dos paquetes, pagar una sesion del viejo abonaba al nuevo, y si el nuevo
+        // ya estaba pagado no quedaba deuda que cubrir — el dinero entero se iba a saldo a favor
+        // (monto_aplicado 0) y la cita se quedaba SIN_PAGO por mucho que se pagara.
+        Long tratamientoDeLaCita = citaAsociada != null && citaAsociada.getSesion() != null
+                && citaAsociada.getSesion().getTratamiento() != null
+                ? citaAsociada.getSesion().getTratamiento().getId() : null;
+        Long tratamientoId = tratamientoDeLaCita != null ? tratamientoDeLaCita
+                : (p.getTratamiento() != null ? p.getTratamiento().getId() : null);
+
+        if (tratamientoId != null) {
+            final Long idPaquete = tratamientoId;
+            tratamiento = tratamientoRepository.findById(idPaquete)
+                    .orElseThrow(() -> new IllegalArgumentException("Tratamiento no encontrado: " + idPaquete));
+            p.setTratamiento(tratamiento);
             precioReferencia = tratamiento.getPrecioPorSesion() != null ? tratamiento.getPrecioPorSesion() : BigDecimal.ZERO;
             int totalSesiones = tratamiento.getTotalSesiones() != null ? tratamiento.getTotalSesiones() : 0;
             BigDecimal montoTotal   = precioReferencia.multiply(BigDecimal.valueOf(totalSesiones));

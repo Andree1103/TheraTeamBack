@@ -18,8 +18,21 @@ public class CatEstadoCitaController {
 
     private final CatEstadoCitaService service;
 
+    /**
+     * Por defecto devuelve solo los estados activos: es lo que alimenta el desplegable de la
+     * cita, y un estado retirado no debe poder elegirse.
+     *
+     * Se retiraron "Cancelada por paciente" y "Cancelada por clínica" al unificarlas en ANULADA.
+     * No se borran del catálogo — hay citas e historial apuntando a ellas —, así que la única
+     * forma de que dejen de ofrecerse es no listarlas.
+     *
+     * `incluirInactivos=true` las trae igual, para la pantalla de Configuraciones, que administra
+     * el catálogo y tiene que poder verlas.
+     */
     @GetMapping
-    public List<CatEstadoCita> getAll() { return service.findAll(); }
+    public List<CatEstadoCita> getAll(@RequestParam(defaultValue = "false") boolean incluirInactivos) {
+        return incluirInactivos ? service.findAll() : service.findActivos();
+    }
 
     @GetMapping("/{id}")
     public ResponseEntity<CatEstadoCita> getById(@PathVariable Long id) {
