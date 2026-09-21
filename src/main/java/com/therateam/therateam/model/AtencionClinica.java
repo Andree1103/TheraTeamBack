@@ -35,6 +35,34 @@ public class AtencionClinica {
     @OneToMany(mappedBy = "atencion", fetch = FetchType.EAGER)
     private List<AtencionMetrica> metricas;
 
+    /**
+     * ATENDIDA = la sesion se dio; INASISTENCIA = el paciente no vino.
+     *
+     * La inasistencia se guarda aqui y no en una tabla aparte porque la pregunta es "que paso con
+     * esta cita" y la respuesta es una sola por cita (cita_id ya es UNIQUE). Asi aparece en
+     * Atenciones junto a las sesiones dadas, y se cuenta y exporta igual que el resto.
+     */
+    @Column(nullable = false, length = 20)
+    private String tipo = "ATENDIDA";
+
+    /** Por que no vino, tal como se anoto. Solo tiene valor cuando tipo = INASISTENCIA. */
+    @Column(length = 255)
+    private String motivo;
+
+    /**
+     * true = lo cobrado volvio al paciente como saldo a favor; false = se cobro igual.
+     *
+     * Es columna y no una frase dentro del motivo porque esto se consulta: cuantas inasistencias
+     * se devolvieron, cuanto dinero, en que mes. Un texto libre no se filtra ni se suma, y se
+     * pierde en cuanto alguien corrige la redaccion.
+     */
+    @Column(name = "con_devolucion", nullable = false)
+    private Boolean conDevolucion = false;
+
+    /** Cuanto volvio al paciente. 0 cuando no hubo devolucion. */
+    @Column(name = "monto_devuelto", nullable = false)
+    private java.math.BigDecimal montoDevuelto = java.math.BigDecimal.ZERO;
+
     private LocalDateTime fechaInicioReal;
     private LocalDateTime fechaFinReal;
     private Integer duracionRealMin;

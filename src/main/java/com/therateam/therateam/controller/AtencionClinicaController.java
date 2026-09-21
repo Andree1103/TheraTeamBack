@@ -52,6 +52,30 @@ public class AtencionClinicaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.registrar(req));
     }
 
+    /**
+     * POST /api/atenciones/inasistencia — el paciente no vino.
+     *
+     * Deja la constancia en Atenciones (tipo INASISTENCIA + motivo) y pone la cita en No asistio.
+     * El motivo es obligatorio: sin el, la fila no responde nada que no dijera ya el estado.
+     */
+    @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR')")
+    @PostMapping("/inasistencia")
+    public ResponseEntity<AtencionClinica> registrarInasistencia(@RequestBody InasistenciaRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(service.registrarInasistencia(req.getCitaId(), req.getMotivo(), req.getFecha(),
+                        Boolean.TRUE.equals(req.getDevolver())));
+    }
+
+    /** Lo minimo para anotar que no vino: de que cita se trata y por que. */
+    @lombok.Data
+    public static class InasistenciaRequest {
+        private Long citaId;
+        private String motivo;
+        private java.time.LocalDateTime fecha;
+        /** true = el dinero cobrado vuelve al paciente como saldo a favor. */
+        private Boolean devolver;
+    }
+
     @PreAuthorize("hasAuthority('MODULO_CITAS_EDITAR')")
     @PutMapping("/{id}")
     public ResponseEntity<AtencionClinica> update(@PathVariable Long id, @RequestBody AtencionClinica atencion) {

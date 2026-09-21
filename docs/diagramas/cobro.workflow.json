@@ -1,0 +1,213 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Cobrar una cita",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "camino",
+        "label": "Camino normal",
+        "focus": [
+          "cita",
+          "registrar",
+          "reparto",
+          "aplicado"
+        ],
+        "note": "De pulsar Registrar pago a la cita en PAGADA."
+      },
+      {
+        "id": "paquete",
+        "label": "Cuando hay paquete",
+        "focus": [
+          "paquete",
+          "reparto",
+          "cuenta"
+        ],
+        "note": "El paquete lo manda la cita, no el ultimo que se le creo al paciente."
+      },
+      {
+        "id": "sobrante",
+        "label": "Lo que sobra",
+        "focus": [
+          "reparto",
+          "saldo"
+        ],
+        "note": "Solo lo que excede la deuda queda como saldo a favor."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "ui",
+      "label": "Recepcion"
+    },
+    {
+      "id": "back",
+      "label": "Reglas del servidor"
+    },
+    {
+      "id": "datos",
+      "label": "Lo que queda guardado"
+    }
+  ],
+  "mainPath": [
+    "cita",
+    "registrar",
+    "paquete",
+    "deuda",
+    "reparto",
+    "aplicado"
+  ],
+  "nodes": [
+    {
+      "id": "cita",
+      "lane": "ui",
+      "col": 0,
+      "type": "external",
+      "label": "Cita abierta",
+      "sublabel": "suelta o de paquete",
+      "width": 138
+    },
+    {
+      "id": "registrar",
+      "lane": "ui",
+      "col": 1,
+      "type": "frontend",
+      "label": "Registrar pago",
+      "sublabel": "monto y medio",
+      "width": 138
+    },
+    {
+      "id": "paquete",
+      "lane": "back",
+      "col": 1,
+      "type": "backend",
+      "label": "Paquete de la cita",
+      "sublabel": "el suyo, no el ultimo",
+      "tag": "era el bug",
+      "width": 138
+    },
+    {
+      "id": "deuda",
+      "lane": "back",
+      "col": 2,
+      "type": "backend",
+      "label": "Deuda pendiente",
+      "sublabel": "total menos cobrado",
+      "width": 138
+    },
+    {
+      "id": "reparto",
+      "lane": "back",
+      "col": 3,
+      "type": "backend",
+      "label": "Reparto",
+      "sublabel": "aplica y deja el resto",
+      "width": 138
+    },
+    {
+      "id": "aplicado",
+      "lane": "back",
+      "col": 4,
+      "type": "backend",
+      "label": "Cita al dia",
+      "sublabel": "PAGADA o PARCIAL",
+      "width": 138
+    },
+    {
+      "id": "cuenta",
+      "lane": "datos",
+      "col": 3,
+      "type": "database",
+      "label": "Cuenta del paquete",
+      "sublabel": "sube el total cobrado",
+      "width": 138
+    },
+    {
+      "id": "saldo",
+      "lane": "datos",
+      "col": 4,
+      "type": "database",
+      "label": "Saldo a favor",
+      "sublabel": "solo lo que sobra",
+      "width": 138
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-registrar",
+      "from": "cita",
+      "to": "registrar",
+      "variant": "default"
+    },
+    {
+      "id": "e-paquete",
+      "from": "registrar",
+      "to": "paquete",
+      "label": "de que paquete es",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-deuda",
+      "from": "paquete",
+      "to": "deuda",
+      "variant": "default"
+    },
+    {
+      "id": "e-reparto",
+      "from": "deuda",
+      "to": "reparto",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-aplicado",
+      "from": "reparto",
+      "to": "aplicado",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-cuenta",
+      "from": "reparto",
+      "to": "cuenta",
+      "variant": "dashed"
+    },
+    {
+      "id": "e-saldo",
+      "from": "reparto",
+      "to": "saldo",
+      "label": "si sobra",
+      "variant": "dashed",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "El bug que se arreglo",
+      "items": [
+        "La pantalla mandaba el paquete mas reciente del paciente, no el de la cita",
+        "Con dos paquetes, pagar el viejo abonaba al nuevo; si el nuevo ya estaba pagado no habia deuda que cubrir",
+        "El cobro entero se iba a saldo a favor y la cita seguia SIN PAGO por mucho que se pagara"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Ahora manda la cita",
+      "items": [
+        "El paquete sale de la propia cita, tanto en la pantalla como en el servidor",
+        "El servidor lo impone aunque el cliente mande otro: la caja no depende de que la pantalla acierte",
+        "Con dos paquetes, pagar una sesion del viejo abona al viejo"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Saldo a favor, solo lo que sobra",
+      "items": [
+        "Primero se cubre la deuda de la cita o del paquete",
+        "El saldo previo del paciente entra tambien en el reparto",
+        "Anular una cita pagada devuelve ese dinero como saldo o como devolucion real"
+      ]
+    }
+  ]
+}

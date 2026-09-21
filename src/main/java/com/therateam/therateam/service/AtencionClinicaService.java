@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,6 +22,9 @@ public class AtencionClinicaService {
     private final TratamientoRepository tratamientoRepository;
     private final CatEstadoSesionRepository catEstadoSesionRepository;
     private final CatEstadoCitaRepository catEstadoCitaRepository;
+    /** Para devolver el dinero de una inasistencia por el mismo camino que lo hace anular. */
+    private final CitaService citaService;
+    private final CitaHistorialRepository citaHistorialRepository;
 
     public List<AtencionClinica> findAll() { return repository.findAll(); }
 
@@ -61,6 +65,8 @@ public class AtencionClinicaService {
             esNueva = true;
         }
 
+        atencion.setTipo("ATENDIDA");
+        atencion.setMotivo(null);
         atencion.setFechaInicioReal(req.getFechaInicioReal());
         atencion.setNotasPost(req.getNotasPost());
         atencion = repository.save(atencion);
@@ -106,6 +112,85 @@ public class AtencionClinicaService {
                 citaRepository.save(cita);
             });
         }
+
+        return atencion;
+    }
+
+    /**
+     * El paciente no vino: queda registrado como una atencion de tipo INASISTENCIA, con su motivo.
+     *
+     * POR QUE PASA POR AQUI Y NO POR EL ESTADO DE LA CITA: "No asistio" en la agenda vive en una
+     * semana que nadie vuelve a mirar. Como fila de Atenciones se puede contar, filtrar y exportar
+     * junto a las sesiones que si se dieron, que es lo que hace falta para hablar con el paciente.
+     *
+     * NO CUENTA COMO SESION ATENDIDA: no toca sesiones_atendidas ni marca la sesion ATENDIDA. Si
+     * la clinica decide cobrar la inasistencia, eso se resuelve por el lado del pago.
+     *
+     * Tampoco exige que la cita este pagada, a diferencia de registrar(): quien no vino
+     * normalmente tampoco pago, y esa es justo la situacion que hay que poder anotar.
+     */
+    @Transactional
+    public AtencionClinica registrarInasistencia(Long citaId, String motivo, LocalDateTime fecha, boolean devolver) {
+        if (motivo == null || motivo.isBlank()) {
+            throw new IllegalArgumentException("Indica el motivo de la inasistencia.");
+        }
+        Cita cita = citaRepository.findById(citaId)
+                .orElseThrow(() -> new IllegalArgumentException("Cita no encontrada: " + citaId));
+
+        String estadoActual = cita.getEstado() != null ? cita.getEstado().getKey() : null;
+        if ("ASISTIDA".equals(estadoActual)) {
+            throw new IllegalArgumentException(
+                    "Esta cita ya tiene una atencion registrada. Deshazla antes de marcar inasistencia.");
+        }
+
+        String limpioMotivo = motivo.trim();
+        if (limpioMotivo.length() > 255) limpioMotivo = limpioMotivo.substring(0, 255);
+        // Cuanto habia cobrado, antes de tocar nada: si se devuelve, esto es lo que vuelve.
+        java.math.BigDecimal cobrado = cita.getMontoPagado() != null ? cita.getMontoPagado() : java.math.BigDecimal.ZERO;
+
+        AtencionClinica atencion = repository.findByCitaId(citaId).orElseGet(AtencionClinica::new);
+        atencion.setCita(cita);
+        atencion.setTipo("INASISTENCIA");
+        atencion.setMotivo(limpioMotivo);
+        atencion.setConDevolucion(devolver);
+        atencion.setMontoDevuelto(devolver ? cobrado : java.math.BigDecimal.ZERO);
+        atencion.setFechaInicioReal(fecha != null ? fecha : cita.getFechaInicio());
+        atencion.setNotasPost(null);
+        atencion = repository.save(atencion);
+
+        // Una inasistencia no tiene metricas: si la cita las tenia de un registro anterior, se van
+        // con el cambio de tipo — dejarlas serian mediciones de una sesion que no ocurrio.
+        metricaRepository.deleteByAtencionId(atencion.getId());
+
+        // El motivo se copia tambien a la cita. Es el mismo campo que ya usan la anulacion y la
+        // reprogramacion —"por que esta cita no se hizo como estaba"— y es lo que permite que el
+        // listado de Atenciones, que se arma con citas, muestre el porque sin una consulta extra.
+        // Con devolucion, el dinero vuelve al paciente como saldo a favor; sin ella se queda en la
+        // clinica y la cita sigue PAGADA — es un ingreso mas, no hay nada que revertir.
+        if (devolver) {
+            citaService.revertirDinero(cita, false, null, "inasistencia");
+        }
+
+        cita.setMotivoEstado(limpioMotivo);
+        CatEstadoCita estadoPrevio = cita.getEstado();
+        CatEstadoCita noAsistio = catEstadoCitaRepository.findByKey("NO_ASISTIO").orElse(null);
+        if (noAsistio != null) cita.setEstado(noAsistio);
+        citaRepository.save(cita);
+
+        // La misma bitacora que la anulacion y la reprogramacion. Sin esto, la inasistencia era
+        // el unico cambio de estado que no dejaba rastro de quien lo hizo ni cuando.
+        CitaHistorial h = new CitaHistorial();
+        h.setCita(cita);
+        h.setEstadoAnterior(estadoPrevio);
+        h.setEstadoNuevo(noAsistio != null ? noAsistio : estadoPrevio);
+        h.setFechaAnterior(cita.getFechaInicio());
+        h.setFechaNueva(cita.getFechaInicio());
+        h.setCanal("INASISTENCIA");
+        String rastro = limpioMotivo + (devolver
+                ? " — devuelto S/ " + cobrado + " como saldo a favor"
+                : " — sin devolucion");
+        h.setMotivo(rastro.length() > 500 ? rastro.substring(0, 500) : rastro);
+        citaHistorialRepository.save(h);
 
         return atencion;
     }

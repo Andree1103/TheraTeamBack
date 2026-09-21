@@ -506,6 +506,17 @@ public class PagoService {
      */
     @Transactional
     public void revertirComoSaldoAFavor(Long id) {
+        revertirComoSaldoAFavor(id, "Anulación de cita — el pago quedó a favor");
+    }
+
+    /**
+     * Igual que el anterior, nombrando el hecho en el historial de saldo del paciente.
+     *
+     * Hace falta porque el mismo movimiento de dinero lo provocan cosas distintas — anular la
+     * cita o marcar una inasistencia con devolucion — y en Adelantos hay que poder distinguirlas.
+     */
+    @Transactional
+    public void revertirComoSaldoAFavor(Long id, String motivoMovimiento) {
         repository.findById(id).ifPresent(p -> {
             BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
 
@@ -534,7 +545,7 @@ public class PagoService {
                     paciente.setSaldoAFavor(nuevo);
                     pacienteRepository.save(paciente);
                     saldoMovimientoService.registrar(paciente, montoAplicado, nuevo,
-                            "Anulación de cita — el pago quedó a favor", p.getCita(), p);
+                            motivoMovimiento, p.getCita(), p);
                 });
             }
         });

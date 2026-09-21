@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Ciclo de vida de una cita",
+    "viewBox": [
+      1030,
+      640
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "recorrido-normal",
+        "label": "Recorrido normal",
+        "focus": [
+          "programada",
+          "confirmada",
+          "encurso",
+          "asistida"
+        ],
+        "note": "De agendada a atendida: lo que se pone a mano y lo que marca el sistema."
+      },
+      {
+        "id": "movida",
+        "label": "La cita se mueve",
+        "focus": [
+          "encurso",
+          "reprogramada",
+          "citanueva"
+        ],
+        "note": "La original queda como constancia y nace una cita nueva que hereda todo."
+      },
+      {
+        "id": "anulacion",
+        "label": "La cita se anula",
+        "focus": [
+          "encurso",
+          "anulada"
+        ],
+        "note": "Exige motivo y resuelve el pago antes de cerrar la cita."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Recorrido normal"
+    },
+    {
+      "id": "eventos",
+      "label": "La cita no se hace como estaba"
+    },
+    {
+      "id": "terminal",
+      "label": "Lo que nace de mover la cita"
+    }
+  ],
+  "states": [
+    {
+      "id": "programada",
+      "type": "start",
+      "label": "Programada",
+      "sublabel": "recien agendada",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "inicio"
+    },
+    {
+      "id": "confirmada",
+      "type": "active",
+      "label": "Confirmada",
+      "sublabel": "el paciente aviso",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "a mano"
+    },
+    {
+      "id": "encurso",
+      "type": "active",
+      "label": "En curso",
+      "sublabel": "sesion empezada",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "a mano"
+    },
+    {
+      "id": "asistida",
+      "type": "success",
+      "label": "Asistida",
+      "sublabel": "atencion registrada",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "automatico"
+    },
+    {
+      "id": "reprogramada",
+      "type": "neutral",
+      "label": "Reprogramada",
+      "sublabel": "queda como constancia",
+      "lane": "eventos",
+      "col": 0,
+      "tag": "boton Reprogramar"
+    },
+    {
+      "id": "citanueva",
+      "type": "start",
+      "label": "Cita nueva",
+      "sublabel": "nace Programada",
+      "lane": "terminal",
+      "col": 0,
+      "tag": "hereda todo"
+    },
+    {
+      "id": "anulada",
+      "type": "failure",
+      "label": "Anulada",
+      "sublabel": "motivo obligatorio",
+      "lane": "eventos",
+      "col": 1,
+      "tag": "boton Anular"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t-mueve",
+      "from": "encurso",
+      "to": "reprogramada",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "t-nace",
+      "from": "reprogramada",
+      "to": "citanueva",
+      "label": "hereda todo",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "t-anula",
+      "from": "encurso",
+      "to": "anulada",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Tres estados no se eligen a mano",
+      "items": [
+        "Asistida la marca el registro de la atencion clinica",
+        "Anulada solo llega por el boton Anular; Reprogramada, por Reprogramar",
+        "El desplegable solo ofrece Programada, Confirmada, En curso y No asistio",
+        "No asistio se anota a mano y cierra la cita sin mover dinero"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "El dinero y la hora",
+      "items": [
+        "Anular devuelve el pago como saldo a favor o como devolucion real",
+        "Reprogramar lleva el pago a la cita nueva: nunca se cobra dos veces",
+        "Anulada y Reprogramada liberan el horario del terapeuta"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "El rastro queda escrito",
+      "items": [
+        "Cada salida guarda su motivo en la cita y en cita_historial",
+        "La cita nueva apunta a la original por reprogramacion_de",
+        "Desde cualquiera de las dos se ve el numero de la otra"
+      ]
+    }
+  ]
+}

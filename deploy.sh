@@ -5,6 +5,11 @@
 #   ssh root@49.13.196.23
 #   cd /ruta/del/repo && ./deploy.sh
 #
+# Formas de llamarlo:
+#   ./deploy.sh                    despliega; si hay migraciones pendientes, las lista y PREGUNTA
+#   ./deploy.sh --sin-migraciones  despliega solo el codigo, sin tocar la base
+#   ./deploy.sh --si               no pregunta (para llamarlo desde otro script)
+#
 # Qué hace, en orden:
 #   1. Backup de la base de datos (dentro del contenedor db, copiado al host).
 #   2. git pull de main.
@@ -20,6 +25,18 @@
 #   ./db/aplicar-migraciones.sh --estado
 
 set -euo pipefail
+
+SIN_MIGRACIONES=0
+SIN_PREGUNTAR=0
+for arg in "$@"; do
+  case "$arg" in
+    --sin-migraciones) SIN_MIGRACIONES=1 ;;
+    --si|--yes|-y)     SIN_PREGUNTAR=1 ;;
+    *) echo "Opcion desconocida: $arg" >&2
+       echo "Uso: $0 [--sin-migraciones] [--si]" >&2
+       exit 2 ;;
+  esac
+done
 
 DB_NAME="${DB_NAME:-BDClinicaSAAS}"
 DB_USER="${DB_USER:-postgres}"
@@ -50,7 +67,48 @@ echo "==> 3/5  Migraciones SQL"
 # Cada archivo se aplica UNA sola vez: db/aplicar-migraciones.sh lleva el registro en la tabla
 # schema_migrations. Antes este paso reaplicaba todos los .sql en cada despliegue, lo que
 # dependía de que ninguna migración dejara nunca de ser repetible.
-DB_NAME="$DB_NAME" DB_USER="$DB_USER" ./db/aplicar-migraciones.sh
+#
+# Aun así el paso PREGUNTA antes de tocar la base, y con --sin-migraciones ni la mira: el
+# registro evita que una migración se repita, pero no vuelve inofensiva a la que todavía no se
+# aplicó. Ver qué va a correr antes de que corra es lo que permite parar a tiempo.
+if [ "$SIN_MIGRACIONES" = "1" ]; then
+  echo "    --sin-migraciones: no se toca la base de datos."
+  echo "    Lo que queda pendiente para un proximo despliegue:"
+  DB_NAME="$DB_NAME" DB_USER="$DB_USER" ./db/aplicar-migraciones.sh --estado | grep 'PENDIENTE'     || echo "      (ninguna)"
+else
+  ESTADO="$(DB_NAME="$DB_NAME" DB_USER="$DB_USER" ./db/aplicar-migraciones.sh --estado)"
+  PENDIENTES="$(printf '%s
+' "$ESTADO" | grep -c 'PENDIENTE' || true)"
+
+  if [ "$PENDIENTES" = "0" ]; then
+    echo "    Sin migraciones pendientes — la base se queda como está."
+  else
+    echo "    $PENDIENTES migracion(es) sin aplicar:"
+    printf '%s
+' "$ESTADO" | grep 'PENDIENTE' | sed 's/^ */      /'
+    echo "    El backup de esta corrida ya está en $BACKUP_FILE"
+    # Nada toca la base sin un si explicito. Cuando no hay terminal para preguntar (cron, otro
+    # script, ./deploy.sh < /dev/null) se para en vez de seguir: aplicar una migracion sin que
+    # nadie la haya visto es justo lo que se quiere evitar. Para esos casos esta --si.
+    if [ "$SIN_PREGUNTAR" != "1" ]; then
+      if [ ! -t 0 ]; then
+        echo "    No hay terminal para confirmar y no se paso --si: no se toca la base." >&2
+        echo "      ./deploy.sh --si                 aplicarlas sin preguntar" >&2
+        echo "      ./deploy.sh --sin-migraciones    desplegar solo el codigo" >&2
+        exit 1
+      fi
+      printf "    ¿Aplicarlas ahora? [s/N] "
+      read -r RESPUESTA
+      case "$RESPUESTA" in
+        s|S|si|SI|Si|y|Y) ;;
+        *) echo "    Cancelado. No se toco la base. Para desplegar solo el codigo:" >&2
+           echo "      ./deploy.sh --sin-migraciones" >&2
+           exit 1 ;;
+      esac
+    fi
+    DB_NAME="$DB_NAME" DB_USER="$DB_USER" ./db/aplicar-migraciones.sh
+  fi
+fi
 
 echo "==> 4/5  Rebuild del backend"
 $DC up -d --build backend

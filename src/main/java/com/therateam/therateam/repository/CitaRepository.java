@@ -61,7 +61,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             c.loteMasivoId,
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
             c.motivoEstado, rp.id,
-            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false)
+            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
+            ac.conDevolucion, ac.montoDevuelto
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -74,6 +75,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
         LEFT JOIN c.reprogramacionDe rp
+        LEFT JOIN AtencionClinica ac ON ac.cita = c
         WHERE c.eliminado = false
         """)
     Page<CitaDTO> findAllProjected(Pageable pageable);
@@ -99,7 +101,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             c.loteMasivoId,
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
             c.motivoEstado, rp.id,
-            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false)
+            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
+            ac.conDevolucion, ac.montoDevuelto
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -116,12 +119,16 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
         LEFT JOIN c.reprogramacionDe rp
+        LEFT JOIN AtencionClinica ac ON ac.cita = c
         WHERE c.eliminado = false
           AND (CAST(:fechaInicio AS timestamp) IS NULL OR c.fechaInicio >= :fechaInicio)
           AND (CAST(:fechaFin AS timestamp) IS NULL OR c.fechaInicio <= :fechaFin)
           AND (CAST(:terapeuta AS string) IS NULL OR LOWER(CONCAT(u.nombre, ' ', u.apellido)) LIKE LOWER(CONCAT('%', CAST(:terapeuta AS string), '%')))
           AND (CAST(:terapeutaId AS long) IS NULL OR ter.id = :terapeutaId)
-          AND (CAST(:estadoKey AS string) IS NULL OR e.key = :estadoKey)
+          AND (CAST(:estadoKey AS string) IS NULL
+               OR e.key = :estadoKey
+               OR (LOCATE(',', :estadoKey) > 0
+                   AND LOCATE(CONCAT(',', e.key, ','), CONCAT(',', :estadoKey, ',')) > 0))
           AND (CAST(:paciente AS string) IS NULL
                OR LOWER(CONCAT(p.nombre, ' ', p.apellido)) LIKE LOWER(CONCAT('%', CAST(:paciente AS string), '%')))
           AND (CAST(:areaId AS long) IS NULL OR a.id = :areaId)
@@ -167,7 +174,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             c.loteMasivoId,
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
             c.motivoEstado, rp.id,
-            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false)
+            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
+            ac.conDevolucion, ac.montoDevuelto
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -180,6 +188,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
         LEFT JOIN c.reprogramacionDe rp
+        LEFT JOIN AtencionClinica ac ON ac.cita = c
         WHERE c.id = :id
         """)
     java.util.Optional<CitaDTO> findByIdProjected(@Param("id") Long id);
@@ -206,7 +215,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             c.loteMasivoId,
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
             c.motivoEstado, rp.id,
-            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false)
+            (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
+            ac.conDevolucion, ac.montoDevuelto
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -219,6 +229,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         LEFT JOIN c.modalidad m
         LEFT JOIN c.estadoPago ep
         LEFT JOIN c.reprogramacionDe rp
+        LEFT JOIN AtencionClinica ac ON ac.cita = c
         WHERE p.id = :pacienteId AND c.eliminado = false
         ORDER BY c.fechaInicio DESC
         """)

@@ -511,8 +511,25 @@ public class CitaService {
 
     /** Revierte el dinero de una cita (suelta o de paquete) y la deja ANULADA con su motivo. */
     private void anularCitaInterna(Cita cita, String tipoDevolucion, Long metodoId, String motivo) {
-        boolean devolverComoDinero = "DINERO".equalsIgnoreCase(tipoDevolucion);
+        revertirDinero(cita, "DINERO".equalsIgnoreCase(tipoDevolucion), metodoId, "anulación");
 
+        CatEstadoCita anulada = catEstadoCitaRepository.findByKey("ANULADA")
+                .orElseThrow(() -> new IllegalStateException("No existe el estado ANULADA en el catálogo."));
+        CatEstadoCita estadoPrevio = cita.getEstado();
+        cita.setEstado(anulada);
+        cita.setMotivoEstado(motivo);
+        registrarAnulacion(cita, estadoPrevio, anulada, motivo);
+    }
+
+    /**
+     * Devuelve el dinero de una cita a su paciente, sin tocar el estado de la cita.
+     *
+     * Lo usan la anulacion y la inasistencia con devolucion: son dos hechos distintos pero el
+     * dinero se mueve igual, y duplicar esto era la forma segura de que un dia dejaran de
+     * coincidir. `porQue` solo nombra el hecho en el historial de saldo del paciente.
+     */
+    @Transactional
+    public void revertirDinero(Cita cita, boolean devolverComoDinero, Long metodoId, String porQue) {
         if (cita.getSesion() != null && cita.getSesion().getTratamiento() != null) {
             // Cita de paquete: el pago está contra el tratamiento (repartido entre sesiones), no
             // hay un Pago propio de esta cita — se revierte por monto, no por fila de Pago.
@@ -527,11 +544,12 @@ public class CitaService {
                     Long metodoResuelto = metodoId != null ? metodoId : pagoService.metodoMasRecienteDelTratamiento(tratamiento.getId());
                     String numeroSesion = cita.getSesion().getNumero() != null ? " #" + cita.getSesion().getNumero() : "";
                     pagoService.crearDevolucionManual(cita.getPaciente(), tratamiento, cita, montoDeEstaSesion, metodoResuelto,
-                            "Devolución por anulación de sesión" + numeroSesion + " del paquete " + tratamiento.getNombre());
+                            "Devolución por " + porQue + " de sesión" + numeroSesion + " del paquete " + tratamiento.getNombre());
                 } else {
                     String numeroSesion = cita.getSesion().getNumero() != null ? " #" + cita.getSesion().getNumero() : "";
                     sumarSaldoAFavor(cita.getPaciente(), montoDeEstaSesion,
-                            "Anulación de sesión" + numeroSesion + " del paquete " + tratamiento.getNombre(), cita);
+                            capitalizar(porQue) + " de sesión" + numeroSesion
+                            + " del paquete " + tratamiento.getNombre(), cita);
                 }
             }
             cita.setMontoPagado(BigDecimal.ZERO);
@@ -544,17 +562,16 @@ public class CitaService {
                 if (devolverComoDinero) {
                     pagoService.devolver(pago.getId());
                 } else {
-                    pagoService.revertirComoSaldoAFavor(pago.getId());
+                    pagoService.revertirComoSaldoAFavor(pago.getId(),
+                            capitalizar(porQue) + " de cita — el pago quedó a favor");
                 }
             }
+            citaRepository.save(cita);
         }
+    }
 
-        CatEstadoCita anulada = catEstadoCitaRepository.findByKey("ANULADA")
-                .orElseThrow(() -> new IllegalStateException("No existe el estado ANULADA en el catálogo."));
-        CatEstadoCita estadoPrevio = cita.getEstado();
-        cita.setEstado(anulada);
-        cita.setMotivoEstado(motivo);
-        registrarAnulacion(cita, estadoPrevio, anulada, motivo);
+    private static String capitalizar(String t) {
+        return (t == null || t.isEmpty()) ? "" : Character.toUpperCase(t.charAt(0)) + t.substring(1);
     }
 
     /**

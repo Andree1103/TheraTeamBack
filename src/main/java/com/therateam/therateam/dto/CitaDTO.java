@@ -25,7 +25,9 @@ public class CitaDTO {
                     String tipoRecurrencia, BigDecimal precio, BigDecimal montoPagado,
                     Long tratamientoId, String tratamientoNombre, String metodoPagoNombre, String loteMasivoId,
                     String usuarioCreacionNombre, String motivoEstado, Long reprogramacionDe,
-                    Long reprogramadaEn) {
+                    Long reprogramadaEn, Boolean conDevolucion, java.math.BigDecimal montoDevuelto) {
+        this.conDevolucion = conDevolucion;
+        this.montoDevuelto = montoDevuelto;
         this.motivoEstado = motivoEstado;
         this.reprogramacionDe = reprogramacionDe;
         this.reprogramadaEn = reprogramadaEn;
@@ -157,6 +159,14 @@ public class CitaDTO {
     /** Id de la cita que sustituye a esta, cuando se reprogramó. El rastro, en los dos sentidos. */
     @JsonProperty("reprogramada_en")
     private Long reprogramadaEn;
+
+    /** true si la inasistencia se registró devolviendo lo cobrado como saldo a favor. */
+    @JsonProperty("con_devolucion")
+    private Boolean conDevolucion;
+
+    /** Cuánto volvió al paciente por esa devolución. */
+    @JsonProperty("monto_devuelto")
+    private java.math.BigDecimal montoDevuelto;
 
     @JsonProperty("tipo_recurrencia")
     private String tipoRecurrencia;

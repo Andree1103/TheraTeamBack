@@ -92,7 +92,8 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
             pg.referencia, pg.notas, pg.fechaPago, pg.createdAt,
             pg.concepto, pg.esAdicional, pg.esDevolucion,
-            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId)
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId),
+            cc.id, cc.fechaInicio
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
@@ -124,7 +125,8 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
             pg.referencia, pg.notas, pg.fechaPago, pg.createdAt,
             pg.concepto, pg.esAdicional, pg.esDevolucion,
-            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId)
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId),
+            cc.id, cc.fechaInicio
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
@@ -170,7 +172,8 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
             pg.referencia, pg.notas, pg.fechaPago, pg.createdAt,
             pg.concepto, pg.esAdicional, pg.esDevolucion,
-            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId)
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId),
+            cc.id, cc.fechaInicio
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t
@@ -199,7 +202,8 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             pg.montoRecibido, pg.montoAplicado, pg.saldoGenerado, pg.saldoPrevio,
             pg.referencia, pg.notas, pg.fechaPago, pg.createdAt,
             pg.concepto, pg.esAdicional, pg.esDevolucion,
-            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId)
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = pg.usuarioCreacionId),
+            cc.id, cc.fechaInicio
         )
         FROM Pago pg
         LEFT JOIN pg.tratamiento t

@@ -35,6 +35,13 @@ public class PagoDTO {
     private Boolean esDevolucion;
     /** Nombre del usuario que registró el pago. */
     private String usuarioCreacionNombre;
+    /**
+     * La cita que este pago cobró, cuando el cobro fue de una cita concreta.
+     *
+     * Va en el listado porque es el amarre que faltaba: al mirar Pagos, la pregunta siguiente es
+     * casi siempre "¿de qué cita era?", y sin el número había que deducirlo por paciente y fecha.
+     */
+    private CitaInfo cita;
 
     public PagoDTO(Long id,
                     Long tratamientoId, String tratamientoNombre, String terapeutaNombre, String tipoTerapiaNombre,
@@ -44,7 +51,8 @@ public class PagoDTO {
                     BigDecimal saldoGenerado, BigDecimal saldoPrevio,
                     String referencia, String notas,
                     LocalDateTime fechaPago, LocalDateTime createdAt,
-                    String concepto, Boolean esAdicional, Boolean esDevolucion, String usuarioCreacionNombre) {
+                    String concepto, Boolean esAdicional, Boolean esDevolucion, String usuarioCreacionNombre,
+                    Long citaId, LocalDateTime citaFechaInicio) {
         this.id = id;
         this.tratamiento = new TratamientoInfo(tratamientoId, tratamientoNombre, terapeutaNombre, tipoTerapiaNombre);
         this.paciente = new PacienteInfo(pacienteId, pacienteNombre, pacienteApellido, pacienteDni);
@@ -61,6 +69,16 @@ public class PagoDTO {
         this.esAdicional = esAdicional;
         this.esDevolucion = esDevolucion;
         this.usuarioCreacionNombre = usuarioCreacionNombre;
+        this.cita = citaId != null ? new CitaInfo(citaId, citaFechaInicio) : null;
+    }
+
+    @Data
+    @NoArgsConstructor
+    public static class CitaInfo {
+        private Long id;
+        private LocalDateTime fechaInicio;
+
+        public CitaInfo(Long id, LocalDateTime fechaInicio) { this.id = id; this.fechaInicio = fechaInicio; }
     }
 
     @Data

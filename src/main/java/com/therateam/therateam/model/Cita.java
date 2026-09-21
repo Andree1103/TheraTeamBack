@@ -77,8 +77,8 @@ public class Cita {
     private CatEstadoPagoCita estadoPago;
 
     /**
-     * Por qué la cita no se hizo como estaba: el motivo de la anulación o el de la reprogramación.
-     * Tiene valor cuando el estado es ANULADA o REPROGRAMADA.
+     * Por qué la cita no se hizo como estaba: el motivo de la anulación, de la reprogramación o
+     * de la inasistencia. Tiene valor cuando el estado es ANULADA, REPROGRAMADA o NO_ASISTIO.
      *
      * Antes esto vivía en el estado: había "Cancelada por paciente" y "Cancelada por clínica",
      * dos estados para un mismo hecho con dos motivos. Cada motivo nuevo pedía otro estado y otra

@@ -1,0 +1,252 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Reprogramar una cita",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "camino",
+        "label": "Camino normal",
+        "focus": [
+          "abrir",
+          "boton",
+          "panel",
+          "validar",
+          "crear"
+        ],
+        "note": "De abrir la cita a tener la cita nueva agendada."
+      },
+      {
+        "id": "reglas",
+        "label": "Lo que se valida",
+        "focus": [
+          "horarios",
+          "validar",
+          "rechazo"
+        ],
+        "note": "Los horarios que se ofrecen son los que el guardado acepta."
+      },
+      {
+        "id": "rastro",
+        "label": "Que queda guardado",
+        "focus": [
+          "crear",
+          "original",
+          "pago",
+          "historial"
+        ],
+        "note": "La cita vieja, el dinero y la bitacora despues de mover la cita."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "ui",
+      "label": "Recepcion"
+    },
+    {
+      "id": "back",
+      "label": "Reglas del servidor"
+    },
+    {
+      "id": "datos",
+      "label": "Lo que queda guardado"
+    },
+    {
+      "id": "stop",
+      "label": "Cuando no procede",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "abrir",
+    "boton",
+    "panel",
+    "validar",
+    "crear"
+  ],
+  "nodes": [
+    {
+      "id": "abrir",
+      "lane": "ui",
+      "col": 0,
+      "type": "external",
+      "label": "Abrir la cita",
+      "sublabel": "agenda o buscador #",
+      "width": 138
+    },
+    {
+      "id": "boton",
+      "lane": "ui",
+      "col": 1,
+      "type": "frontend",
+      "label": "Boton Reprogramar",
+      "sublabel": "si no esta atendida",
+      "width": 138
+    },
+    {
+      "id": "panel",
+      "lane": "ui",
+      "col": 2,
+      "type": "frontend",
+      "label": "Panel",
+      "sublabel": "dia, hora y motivo",
+      "tag": "motivo obligatorio",
+      "width": 138
+    },
+    {
+      "id": "horarios",
+      "lane": "back",
+      "col": 2,
+      "type": "backend",
+      "label": "Horarios libres",
+      "sublabel": "jornada menos lo ocupado",
+      "tag": "cupo de esta cita",
+      "width": 138
+    },
+    {
+      "id": "validar",
+      "lane": "back",
+      "col": 3,
+      "type": "backend",
+      "label": "Validaciones",
+      "sublabel": "motivo, cupo y paciente",
+      "width": 138
+    },
+    {
+      "id": "crear",
+      "lane": "back",
+      "col": 4,
+      "type": "backend",
+      "label": "Nace la cita nueva",
+      "sublabel": "hereda paciente y precio",
+      "width": 138
+    },
+    {
+      "id": "original",
+      "lane": "back",
+      "col": 5,
+      "type": "backend",
+      "label": "La original queda",
+      "sublabel": "REPROGRAMADA + motivo",
+      "width": 138
+    },
+    {
+      "id": "pago",
+      "lane": "datos",
+      "col": 4,
+      "type": "database",
+      "label": "El pago viaja",
+      "sublabel": "queda en la cita nueva",
+      "width": 138
+    },
+    {
+      "id": "historial",
+      "lane": "datos",
+      "col": 5,
+      "type": "database",
+      "label": "cita_historial",
+      "sublabel": "canal REPROGRAMACION",
+      "width": 138
+    },
+    {
+      "id": "rechazo",
+      "lane": "stop",
+      "col": 3,
+      "type": "security",
+      "label": "No procede",
+      "sublabel": "sin motivo o sin cupo",
+      "width": 138
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-abrir",
+      "from": "abrir",
+      "to": "boton",
+      "variant": "default"
+    },
+    {
+      "id": "e-panel",
+      "from": "boton",
+      "to": "panel",
+      "variant": "default"
+    },
+    {
+      "id": "e-horarios",
+      "from": "horarios",
+      "to": "panel",
+      "label": "que horas hay",
+      "variant": "dashed"
+    },
+    {
+      "id": "e-enviar",
+      "from": "panel",
+      "to": "validar",
+      "label": "Reprogramar",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-rechazo",
+      "from": "validar",
+      "to": "rechazo",
+      "label": "se avisa, nada cambia",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e-crear",
+      "from": "validar",
+      "to": "crear",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-original",
+      "from": "crear",
+      "to": "original",
+      "variant": "default"
+    },
+    {
+      "id": "e-pago",
+      "from": "crear",
+      "to": "pago",
+      "variant": "dashed"
+    },
+    {
+      "id": "e-historial",
+      "from": "original",
+      "to": "historial",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Dos citas, no una movida",
+      "items": [
+        "La original se queda en su hora como constancia, con el motivo escrito",
+        "La nueva apunta a ella por reprogramacion_de: el rastro va en los dos sentidos",
+        "Cambiarle la fecha a la cita, como antes, borraba cuando era y por que cambio"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Los horarios que se ofrecen son los que entran",
+      "items": [
+        "Se piden con el cupo del tipo de ESTA cita, no el de las que ya estan",
+        "La cita que se mueve no se cuenta a si misma: su hora sigue disponible",
+        "Antes se ofrecia una hora y al guardarla saltaba cupo completo"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "El dinero sigue a la cita",
+      "items": [
+        "El pago queda contra la cita nueva, nunca se cobra dos veces",
+        "La sesion del paquete tambien pasa: es la misma sesion contratada",
+        "Devoluciones y cobros adicionales se quedan donde ocurrieron"
+      ]
+    }
+  ]
+}
