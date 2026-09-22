@@ -149,11 +149,20 @@ public class AtencionClinicaService {
         java.math.BigDecimal cobrado = cita.getMontoPagado() != null ? cita.getMontoPagado() : java.math.BigDecimal.ZERO;
 
         AtencionClinica atencion = repository.findByCitaId(citaId).orElseGet(AtencionClinica::new);
+        // Una devolucion que YA se hizo no se puede deshacer desde aqui: el dinero esta en el
+        // saldo del paciente y su movimiento en el ledger. Volver a marcar la inasistencia —para
+        // corregir el motivo, o por un doble clic— no debe borrar ese dato: la ficha diria "se
+        // cobro igual" sobre un dinero que si volvio, y el flag existe justo para que eso no pase.
+        boolean yaSeDevolvio = Boolean.TRUE.equals(atencion.getConDevolucion());
+        java.math.BigDecimal devueltoAntes = atencion.getMontoDevuelto() != null
+                ? atencion.getMontoDevuelto() : java.math.BigDecimal.ZERO;
+
         atencion.setCita(cita);
         atencion.setTipo("INASISTENCIA");
         atencion.setMotivo(limpioMotivo);
-        atencion.setConDevolucion(devolver);
-        atencion.setMontoDevuelto(devolver ? cobrado : java.math.BigDecimal.ZERO);
+        atencion.setConDevolucion(yaSeDevolvio || devolver);
+        atencion.setMontoDevuelto(yaSeDevolvio ? devueltoAntes
+                                               : (devolver ? cobrado : java.math.BigDecimal.ZERO));
         atencion.setFechaInicioReal(fecha != null ? fecha : cita.getFechaInicio());
         atencion.setNotasPost(null);
         atencion = repository.save(atencion);
@@ -167,7 +176,10 @@ public class AtencionClinicaService {
         // listado de Atenciones, que se arma con citas, muestre el porque sin una consulta extra.
         // Con devolucion, el dinero vuelve al paciente como saldo a favor; sin ella se queda en la
         // clinica y la cita sigue PAGADA — es un ingreso mas, no hay nada que revertir.
-        if (devolver) {
+        // Solo se mueve dinero la primera vez. Sin el guard, pedir devolucion sobre una cita que
+        // ya se devolvio volveria a llamar a revertirDinero; hoy no cobraria nada (la cita quedo
+        // en SIN_PAGO) pero es un doble abono esperando a que cambie algo aguas abajo.
+        if (devolver && !yaSeDevolvio) {
             citaService.revertirDinero(cita, false, null, "inasistencia");
         }
 
@@ -186,8 +198,8 @@ public class AtencionClinicaService {
         h.setFechaAnterior(cita.getFechaInicio());
         h.setFechaNueva(cita.getFechaInicio());
         h.setCanal("INASISTENCIA");
-        String rastro = limpioMotivo + (devolver
-                ? " — devuelto S/ " + cobrado + " como saldo a favor"
+        String rastro = limpioMotivo + (atencion.getConDevolucion()
+                ? " — devuelto S/ " + atencion.getMontoDevuelto() + " como saldo a favor"
                 : " — sin devolucion");
         h.setMotivo(rastro.length() > 500 ? rastro.substring(0, 500) : rastro);
         citaHistorialRepository.save(h);
