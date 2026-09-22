@@ -12,7 +12,9 @@ import io.jsonwebtoken.Claims;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -79,7 +81,24 @@ public class CitaController {
     ) {
         return service.findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, restriccionTerapeutaId(auth),
                 estadoKey, paciente, areaId, metodoPagoId, estadoPagoKey, tipoTerapiaKey, terapeutaIds,
-                pageable).map(this::redactarTelefono);
+                conNulosAlFinal(pageable)).map(this::redactarTelefono);
+    }
+
+    /**
+     * Ordenar por la fecha de registro de la atencion pone los NULL delante, y hay que evitarlo.
+     *
+     * Atenciones ordena por ac.createdAt (cuando se anoto), que es null en las citas marcadas
+     * antes de que existiera el registro de inasistencia. Postgres, en DESC, manda los NULL al
+     * principio: la lista abria con esas filas viejas y sin dato, justo encima de lo que se
+     * acababa de registrar. Spring no permite pedir NULLS LAST desde el parametro `sort`, asi
+     * que se reconstruye aqui.
+     */
+    private Pageable conNulosAlFinal(Pageable pageable) {
+        if (pageable == null || pageable.getSort().isUnsorted()) return pageable;
+        List<Sort.Order> ordenes = pageable.getSort().stream()
+                .map(o -> o.getProperty().startsWith("ac.") ? o.nullsLast() : o)
+                .toList();
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(ordenes));
     }
 
     @GetMapping("/{id}")

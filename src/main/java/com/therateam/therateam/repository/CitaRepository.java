@@ -62,7 +62,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
             c.motivoEstado, rp.id,
             (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
-            ac.conDevolucion, ac.montoDevuelto
+            ac.conDevolucion, ac.montoDevuelto, ac.createdAt
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -102,7 +102,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
             c.motivoEstado, rp.id,
             (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
-            ac.conDevolucion, ac.montoDevuelto
+            ac.conDevolucion, ac.montoDevuelto, ac.createdAt
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -175,7 +175,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
             c.motivoEstado, rp.id,
             (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
-            ac.conDevolucion, ac.montoDevuelto
+            ac.conDevolucion, ac.montoDevuelto, ac.createdAt
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -216,7 +216,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = c.usuarioCreacionId),
             c.motivoEstado, rp.id,
             (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
-            ac.conDevolucion, ac.montoDevuelto
+            ac.conDevolucion, ac.montoDevuelto, ac.createdAt
         )
         FROM Cita c
         LEFT JOIN c.sesion s

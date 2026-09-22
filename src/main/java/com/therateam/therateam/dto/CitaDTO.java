@@ -25,9 +25,11 @@ public class CitaDTO {
                     String tipoRecurrencia, BigDecimal precio, BigDecimal montoPagado,
                     Long tratamientoId, String tratamientoNombre, String metodoPagoNombre, String loteMasivoId,
                     String usuarioCreacionNombre, String motivoEstado, Long reprogramacionDe,
-                    Long reprogramadaEn, Boolean conDevolucion, java.math.BigDecimal montoDevuelto) {
+                    Long reprogramadaEn, Boolean conDevolucion, java.math.BigDecimal montoDevuelto,
+                    LocalDateTime fechaRegistro) {
         this.conDevolucion = conDevolucion;
         this.montoDevuelto = montoDevuelto;
+        this.fechaRegistro = fechaRegistro;
         this.motivoEstado = motivoEstado;
         this.reprogramacionDe = reprogramacionDe;
         this.reprogramadaEn = reprogramadaEn;
@@ -167,6 +169,16 @@ public class CitaDTO {
     /** Cuánto volvió al paciente por esa devolución. */
     @JsonProperty("monto_devuelto")
     private java.math.BigDecimal montoDevuelto;
+
+    /**
+     * Cuándo se registró la atención o la inasistencia — no cuándo era la cita.
+     *
+     * Es lo que ordena el listado de Atenciones: la fecha de la cita ponía arriba las citas
+     * futuras ya marcadas, y lo recién anotado quedaba enterrado meses abajo. Va null en las
+     * citas sin fila en atencion_clinica (las que se marcaron antes de que existiera el registro).
+     */
+    @JsonProperty("fecha_registro")
+    private LocalDateTime fechaRegistro;
 
     @JsonProperty("tipo_recurrencia")
     private String tipoRecurrencia;
