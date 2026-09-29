@@ -120,11 +120,24 @@ public class PagoService {
         // lectura razonable (no hay otro total contra el cual comparar) y deja la cita cuadrada:
         // precio = pagado = PAGADA. Si despues resulta que era un adelanto, se corrige el precio
         // desde la cita y el estado de pago se recalcula solo.
+        //
+        // El cobro puede no traer dinero nuevo: si se paga con el saldo a favor, montoRecibido es
+        // 0 y lo que se pretende cobrar viene en montoAplicado. Sin mirar ese campo, una cita sin
+        // precio pagada con saldo no llegaba a tener precio, no habia deuda que cubrir, el saldo
+        // no se tocaba... y aun asi la cita acababa en PAGADA por el bloque del final. Un pago
+        // fantasma: cita saldada, cero soles movidos.
+        // Se toma el MAYOR de los dos, no el efectivo a secas: en un cobro mixto (parte con saldo,
+        // parte en efectivo) el efectivo es solo un trozo del precio. Cobrar 60 poniendo 40 en
+        // efectivo y 20 del saldo dejaria la cita valiendo 40 si mirasemos solo lo recibido.
+        BigDecimal cargoSolicitado = montoRecibido
+                .max(p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO)
+                .max(BigDecimal.ZERO);
+
         if (citaAsociada != null
                 && (p.getTratamiento() == null || p.getTratamiento().getId() == null)
                 && (citaAsociada.getPrecio() == null || citaAsociada.getPrecio().compareTo(BigDecimal.ZERO) <= 0)
-                && montoRecibido.compareTo(BigDecimal.ZERO) > 0) {
-            citaAsociada.setPrecio(montoRecibido);
+                && cargoSolicitado.compareTo(BigDecimal.ZERO) > 0) {
+            citaAsociada.setPrecio(cargoSolicitado);
             citaRepository.save(citaAsociada);
         }
 
@@ -240,7 +253,10 @@ public class PagoService {
         // La rama de adelantos (arriba) ya dejó el estado_pago correcto según lo cobrado; para el
         // resto de casos (cita sin precio propio, ej. legado) se conserva el comportamiento previo:
         // cualquier pago ligado a la cita la marca PAGADA de una vez.
-        if (!resueltoPorAdelanto && saved.getCita() != null && saved.getCita().getId() != null) {
+        // ...pero solo si de verdad se cobro algo. Un pago de 0 sobre una cita sin precio no
+        // salda nada, y marcarla PAGADA dejaba la cita cerrada sin un sol detras.
+        if (!resueltoPorAdelanto && montoAplicado.compareTo(BigDecimal.ZERO) > 0
+                && saved.getCita() != null && saved.getCita().getId() != null) {
             citaRepository.findById(saved.getCita().getId()).ifPresent(cita ->
                 catEstadoPagoCitaRepository.findByKey("PAGADA").ifPresent(pagada -> {
                     cita.setEstadoPago(pagada);
