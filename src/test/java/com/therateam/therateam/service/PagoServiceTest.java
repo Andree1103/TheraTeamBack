@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -49,6 +50,8 @@ class PagoServiceTest {
     @Mock private SaldoMovimientoService saldoMovimientoService;
     @Mock private SaldoMovimientoRepository saldoMovimientoRepository;
     @Mock private VentaService ventaService;
+    @Mock private com.therateam.therateam.repository.CierreCajaRepository cierreCajaRepository;
+    @Mock private CajaService cajaService;
 
     private PagoService service;
 
@@ -56,8 +59,12 @@ class PagoServiceTest {
     void setUp() {
         service = new PagoService(repository, citaRepository, catEstadoPagoCitaRepository,
                 tratamientoRepository, sesionRepository, pacienteRepository, catMetodoPagoRepository,
-                saldoMovimientoService, saldoMovimientoRepository, ventaService);
+                saldoMovimientoService, saldoMovimientoRepository, ventaService,
+                cierreCajaRepository, cajaService);
         lenient().when(ventaService.preparar(any())).thenReturn(java.util.List.of());
+        // Por defecto la caja del dia esta abierta; el test del bloqueo lo cambia a proposito.
+        lenient().when(cierreCajaRepository.findByFechaAndTurno(any(), any())).thenReturn(Optional.empty());
+        lenient().when(cajaService.horaCorte()).thenReturn(java.time.LocalTime.of(13, 0));
         lenient().when(repository.save(any(Pago.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(pacienteRepository.save(any(Paciente.class))).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -287,7 +294,10 @@ class PagoServiceTest {
     }
 
     @Test
-    void delete_revierteElTotalCobradoYRestauraElSaldoPrevioDelPaciente() {
+    void delete_revierteElTotalCobradoYNoTocaUnSaldoQueEstePagoNoMovio() {
+        // El pago no genero ni consumio saldo (previo 0, generado 0): su efecto es 0, asi que el
+        // saldo que el paciente tenga ahora viene de otro movimiento y debe quedarse como esta.
+        // Antes se hacia setSaldoAFavor(saldoPrevio) y estos 50 desaparecian sin motivo.
         Tratamiento t = tratamiento(new BigDecimal("50"), 10, new BigDecimal("500"));
         when(tratamientoRepository.findById(1L)).thenReturn(Optional.of(t));
         Paciente paciente = paciente(new BigDecimal("50"));
@@ -297,13 +307,53 @@ class PagoServiceTest {
         pagoAEliminar.setId(7L);
         pagoAEliminar.setMontoAplicado(new BigDecimal("50"));
         pagoAEliminar.setSaldoPrevio(BigDecimal.ZERO);
+        pagoAEliminar.setSaldoGenerado(BigDecimal.ZERO);
         when(repository.findById(7L)).thenReturn(Optional.of(pagoAEliminar));
 
         boolean eliminado = service.delete(7L);
 
         assertThat(eliminado).isTrue();
         assertThat(t.getTotalCobrado()).isEqualByComparingTo("450");
-        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("0");
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("50");
+    }
+
+    @Test
+    void delete_deUnAdelantoIntacto_bajaElSaldoExactamenteLoQueEsePagoDejo() {
+        // Un adelanto de 200 sobre saldo 0, y despues entraron otros 100 por otra via. Borrarlo
+        // tiene que dejar 100, no "restaurar" el 0 que habia el dia del adelanto.
+        Paciente paciente = paciente(new BigDecimal("300"));
+        when(pacienteRepository.findById(1L)).thenReturn(Optional.of(paciente));
+
+        Pago adelanto = pagoParaTratamiento(null, new BigDecimal("200"));
+        adelanto.setTratamiento(null);
+        adelanto.setId(9L);
+        adelanto.setMontoAplicado(BigDecimal.ZERO);
+        adelanto.setSaldoPrevio(BigDecimal.ZERO);
+        adelanto.setSaldoGenerado(new BigDecimal("200"));
+        when(repository.findById(9L)).thenReturn(Optional.of(adelanto));
+
+        assertThat(service.delete(9L)).isTrue();
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void delete_seNiegaCuandoElSaldoDeEsePagoYaSeGasto() {
+        // Dejo 200 a favor y solo quedan 20: deshacerlo dejaria el saldo en -180, dinero que la
+        // clinica ya conto como cobrado. Se corta antes de tocar nada.
+        Paciente paciente = paciente(new BigDecimal("20"));
+        when(pacienteRepository.findById(1L)).thenReturn(Optional.of(paciente));
+
+        Pago adelanto = pagoParaTratamiento(null, new BigDecimal("200"));
+        adelanto.setTratamiento(null);
+        adelanto.setId(11L);
+        adelanto.setSaldoPrevio(BigDecimal.ZERO);
+        adelanto.setSaldoGenerado(new BigDecimal("200"));
+        when(repository.findById(11L)).thenReturn(Optional.of(adelanto));
+
+        assertThatThrownBy(() -> service.delete(11L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("solo quedan");
+        assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("20");
     }
 
     @Test

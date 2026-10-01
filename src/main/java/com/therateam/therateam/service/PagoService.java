@@ -42,6 +42,8 @@ public class PagoService {
     private final SaldoMovimientoService saldoMovimientoService;
     private final SaldoMovimientoRepository saldoMovimientoRepository;
     private final VentaService ventaService;
+    private final com.therateam.therateam.repository.CierreCajaRepository cierreCajaRepository;
+    private final CajaService cajaService;
 
     public List<PagoDTO> findAll() { return repository.findAllProjected(); }
 
@@ -331,19 +333,95 @@ public class PagoService {
         return "un adelanto sin cita asociada";
     }
 
+    /**
+     * Cuanto movio este pago el saldo a favor del paciente, con signo.
+     *
+     * Positivo = se lo dejo a favor (un adelanto). Negativo = se lo consumio para cubrir una
+     * deuda. Cero = ni lo toco.
+     */
+    private BigDecimal efectoSobreElSaldo(Pago p) {
+        BigDecimal generado = p.getSaldoGenerado() != null ? p.getSaldoGenerado() : BigDecimal.ZERO;
+        BigDecimal previo   = p.getSaldoPrevio()   != null ? p.getSaldoPrevio()   : BigDecimal.ZERO;
+        return generado.subtract(previo);
+    }
+
+    /**
+     * Un pago de una caja ya cerrada no se toca.
+     *
+     * Cerrar la caja es firmar que ese dinero es el que habia. Borrar despues un pago de ese
+     * turno cambia hacia atras un total que alguien ya cuadro y firmo, y deja el arqueo sin
+     * cuadrar contra su propio cierre. La correccion de un cobro de un dia cerrado se hace con un
+     * movimiento nuevo con fecha de hoy (una devolucion), no reescribiendo el pasado.
+     *
+     * El turno se calcula igual que en Caja: hasta la hora de corte configurada es el 1, desde
+     * ahi el 2. Si esa regla cambia, cambia en CajaService y esto la sigue.
+     */
+    private void verificarQueLaCajaSigaAbierta(Pago p) {
+        if (p.getFechaPago() == null) return;
+        java.time.LocalDate dia = p.getFechaPago().toLocalDate();
+        int turno = p.getFechaPago().toLocalTime().isBefore(cajaService.horaCorte()) ? 1 : 2;
+        cierreCajaRepository.findByFechaAndTurno(dia, turno).ifPresent(cierre -> {
+            throw new IllegalArgumentException(String.format(
+                    "No se puede eliminar: la caja del %s (turno %d) ya esta cerrada. "
+                  + "Para corregirlo, registra una devolucion con fecha de hoy.",
+                    dia.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")), turno));
+        });
+    }
+
+    /**
+     * No se puede borrar un pago cuyo saldo a favor ya se gasto.
+     *
+     * Si un adelanto de 200 dejo saldo y el paciente ya uso 180 en citas, deshacerlo dejaria el
+     * saldo en -180: dinero que la clinica ya conto como cobrado y que ninguna pantalla sabe
+     * representar. Se corta aqui y se dice cuanto queda, para que primero se deshagan los cobros
+     * que lo consumieron. El caso contrario —un pago que USO saldo— siempre se puede deshacer:
+     * devolverlo solo sube el saldo.
+     */
+    private void verificarQueElSaldoSigaDisponible(Pago p) {
+        BigDecimal efecto = efectoSobreElSaldo(p);
+        if (efecto.signum() <= 0) return;
+        if (p.getPaciente() == null || p.getPaciente().getId() == null) return;
+        pacienteRepository.findById(p.getPaciente().getId()).ifPresent(paciente -> {
+            BigDecimal actual = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
+            if (actual.compareTo(efecto) < 0) {
+                throw new IllegalArgumentException(String.format(
+                        "No se puede eliminar este pago: dejo S/ %s a favor del paciente y solo quedan "
+                      + "S/ %s sin usar. Deshaz primero los cobros que usaron ese saldo.",
+                        efecto, actual));
+            }
+        });
+    }
+
     /** Revierte el efecto de un pago sobre el saldo del paciente y el tratamiento/cita (usado al eliminar). */
     private void revertir(Pago p) {
         // Si el pago era una venta, los productos volvieron al estante: el contador debe subir.
         if (p.getId() != null) ventaService.devolverStock(p.getId());
         if (p.getPaciente() != null && p.getPaciente().getId() != null) {
             pacienteRepository.findById(p.getPaciente().getId()).ifPresent(paciente -> {
-                // El saldo a favor que dejó este pago se retira; el saldo previo a este pago se restaura.
-                BigDecimal antes = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
-                BigDecimal restaurado = p.getSaldoPrevio() != null ? p.getSaldoPrevio() : BigDecimal.ZERO;
-                paciente.setSaldoAFavor(restaurado);
+                // Se DESHACE lo que hizo este pago, no se restaura una foto vieja.
+                //
+                // Antes esto hacia `setSaldoAFavor(p.getSaldoPrevio())`: pisaba el saldo actual con
+                // el que habia el dia en que se creo el pago, tirando todo lo ocurrido despues.
+                // Borrar un pago podia SUBIR el saldo (si el saldo de entonces era mayor), bajarlo
+                // de golpe, o moverlo por un importe que no tenia nada que ver con el pago borrado.
+                // Solo acertaba si era el ultimo pago del paciente y nada mas habia pasado.
+                //
+                // El efecto de un pago sobre el saldo es `saldoGenerado - saldoPrevio`: un adelanto
+                // de 200 sobre saldo 0 vale +200; un cobro que consumio 20 de 170 vale -20.
+                // Deshacerlo es restar ese efecto al saldo de AHORA, que es lo unico que compone
+                // bien con los movimientos posteriores.
+                BigDecimal actual = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
+                BigDecimal efecto = efectoSobreElSaldo(p);
+                BigDecimal nuevo = actual.subtract(efecto);
+                paciente.setSaldoAFavor(nuevo);
                 pacienteRepository.save(paciente);
-                saldoMovimientoService.registrar(paciente, restaurado.subtract(antes), restaurado,
-                        "Se eliminó el pago #" + p.getId() + " — saldo restaurado", p.getCita(), null);
+                String detalle = efecto.signum() > 0
+                        ? " — se retiran S/ " + efecto + " que habia dejado a favor"
+                        : (efecto.signum() < 0
+                            ? " — se devuelven S/ " + efecto.negate() + " de saldo que habia usado"
+                            : " — sin efecto sobre su saldo");
+                saldoMovimientoService.registrar(paciente, efecto.negate(), nuevo,
+                        "Se eliminó el pago #" + p.getId() + detalle, p.getCita(), null);
             });
         }
         BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
@@ -501,6 +579,10 @@ public class PagoService {
     @Transactional
     public boolean delete(Long id) {
         return repository.findById(id).map(p -> {
+            // Antes de tocar nada: la caja de ese dia no puede estar cerrada, y su saldo no
+            // puede estar ya gastado. Las dos cosas dejarian numeros que nadie puede cuadrar.
+            verificarQueLaCajaSigaAbierta(p);
+            verificarQueElSaldoSigaDisponible(p);
             revertir(p);
             // saldo_movimientos.pago_id no tiene ON DELETE, así que el movimiento que dejó este
             // pago impedía borrarlo: el error salía como "Los datos enviados no son válidos",
