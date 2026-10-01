@@ -380,16 +380,17 @@ public class CitaService {
                         ? e.getSesion().getTratamiento().getTipoTerapia() : null);
             Integer maxPacientes = tipo != null ? tipo.getMaxPacientes() : null;
 
-            // Si ni el terapeuta ni el horario cambiaron, no repetir la validación de disponibilidad:
-            // de lo contrario, una cita antigua cuyo horario original ya no calza con el horario
-            // ACTUAL del terapeuta (porque se lo cambiaron después de agendarla) quedaría imposible
-            // de editar para siempre, incluso para cambios que no tocan fecha/hora/terapeuta.
+            // Editar NO revalida la jornada del terapeuta (ver validarDentroDeJornada): la cita ya
+            // existe y moverla a una hora fuera de su horario habitual es una decisión de la
+            // clínica. El cupo sí se revisa, porque meter a un paciente de más en un bloque lleno
+            // no es una decisión, es un error. Y si ni el terapeuta ni el horario cambiaron, no
+            // hay nada que revisar: el cupo de ese bloque ya lo contaba a él mismo.
             Long terapeutaNuevoId = e.getTerapeuta() != null ? e.getTerapeuta().getId() : null;
             boolean sinCambioDeHorario = java.util.Objects.equals(terapeutaOriginalId, terapeutaNuevoId)
                     && java.util.Objects.equals(inicioOriginal, e.getFechaInicio())
                     && java.util.Objects.equals(finOriginal, e.getFechaFin());
             if (!sinCambioDeHorario) {
-                validarDisponibilidad(e.getTerapeuta(), e.getFechaInicio(), e.getFechaFin(), maxPacientes, id);
+                validarCupo(e.getTerapeuta(), e.getFechaInicio(), e.getFechaFin(), maxPacientes, id);
             }
             validarPacienteDisponible(e.getPaciente(), e.getFechaInicio(), e.getFechaFin(), id);
 
@@ -665,9 +666,14 @@ public class CitaService {
         TipoTerapia tipo = original.getTipoTerapia() != null ? original.getTipoTerapia()
                 : (original.getSesion() != null && original.getSesion().getTratamiento() != null
                     ? original.getSesion().getTratamiento().getTipoTerapia() : null);
-        // Se excluye la original de las dos validaciones: está a punto de dejar de ocupar su hueco,
-        // y sin excluirla una cita no se podría mover treinta minutos porque chocaría consigo misma.
-        validarDisponibilidad(terapeuta, inicio, fin, tipo != null ? tipo.getMaxPacientes() : null, id);
+        // Reprogramar es mover una cita que ya existe, asi que tampoco revalida la jornada del
+        // terapeuta (mismo criterio que editar; ver validarDentroDeJornada). Si lo hiciera, el
+        // boton "Reprogramar" chocaria contra el muro que la edicion ya no tiene.
+        //
+        // Se excluye la original de las dos validaciones que si corren: está a punto de dejar de
+        // ocupar su hueco, y sin excluirla una cita no se podría mover treinta minutos porque
+        // chocaría consigo misma.
+        validarCupo(terapeuta, inicio, fin, tipo != null ? tipo.getMaxPacientes() : null, id);
         validarPacienteDisponible(original.getPaciente(), inicio, fin, id);
 
         Cita nueva = new Cita();
@@ -1195,12 +1201,32 @@ public class CitaService {
 
     private void validarDisponibilidad(Terapeuta terapeuta, LocalDateTime inicio, LocalDateTime fin,
                                         Integer maxPacientes, Long excluirCitaId) {
-        if (terapeuta == null || terapeuta.getId() == null || inicio == null || fin == null) return;
+        validarDentroDeJornada(terapeuta, inicio, fin);
+        validarCupo(terapeuta, inicio, fin, maxPacientes, excluirCitaId);
+    }
 
+    /**
+     * La hora cae dentro del horario habitual del terapeuta y no choca con una excepción.
+     *
+     * Se exige al CREAR, que es donde evita agendar a quien ese día no está. Al EDITAR no: una
+     * cita ya existe, y la jornada del terapeuta cambia con el tiempo — recepción tenía que
+     * anular y rehacer una cita entera para moverla media hora, o para corregir un dato que ni
+     * tocaba el horario, porque el bloque de aquel día ya no existe hoy. Mover una cita a una
+     * hora que el terapeuta acepta puntualmente es una decisión de la clínica, no un dato
+     * inválido. El cupo y el solapamiento del paciente sí se siguen exigiendo siempre.
+     */
+    private void validarDentroDeJornada(Terapeuta terapeuta, LocalDateTime inicio, LocalDateTime fin) {
+        if (terapeuta == null || terapeuta.getId() == null || inicio == null || fin == null) return;
         if (!disponibilidadService.estaDentroDeHorario(terapeuta.getId(), inicio, fin)) {
             throw new IllegalArgumentException(
                     "El terapeuta no atiende en ese horario (fuera de su horario habitual o bloqueado por una excepción).");
         }
+    }
+
+    /** No se puede meter a más pacientes de los que admite el tipo de terapia en ese bloque. */
+    private void validarCupo(Terapeuta terapeuta, LocalDateTime inicio, LocalDateTime fin,
+                             Integer maxPacientes, Long excluirCitaId) {
+        if (terapeuta == null || terapeuta.getId() == null || inicio == null || fin == null) return;
 
         int capacidad = (maxPacientes != null && maxPacientes > 0) ? maxPacientes : 1;
         List<Cita> solapadas = excluirCitaId != null
