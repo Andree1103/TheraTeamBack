@@ -355,8 +355,9 @@ public class CitaService {
             e.setNotasPrevias(data.getNotasPrevias());
             e.setRecordatorioEnviado(data.getRecordatorioEnviado());
             if (data.getTipoRecurrencia() != null) e.setTipoRecurrencia(data.getTipoRecurrencia());
-            // Solo el frontend manda este campo cuando el usuario logueado es ADMIN (gate en el
-            // modal de edición) — si no viene, se preserva el precio ya guardado.
+            // El frontend solo manda este campo si el usuario tiene permiso de edición en Citas
+            // (el mismo MODULO_CITAS_EDITAR que exige el PUT) — si no viene, se preserva el
+            // precio ya guardado.
             //
             // El estado de pago se DERIVA del precio, asi que cambiarlo sin recalcular dejaba
             // citas mintiendo: subir el precio de una cita ya cobrada la mantenia en PAGADA
