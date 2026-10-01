@@ -193,6 +193,25 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         """)
     java.util.Optional<CitaDTO> findByIdProjected(@Param("id") Long id);
 
+    /**
+     * Cuantas citas tiene cada paquete, cuantas atendidas y cuantas no asistidas, de una sola vez.
+     *
+     * Agrupado a proposito: contarlo paquete por paquete al listar seria una consulta por fila.
+     * Devuelve [tratamientoId, total, atendidas, noAsistidas].
+     */
+    @Query("""
+        SELECT s.tratamiento.id,
+               COUNT(c),
+               SUM(CASE WHEN e.key = 'ASISTIDA'   THEN 1 ELSE 0 END),
+               SUM(CASE WHEN e.key = 'NO_ASISTIO' THEN 1 ELSE 0 END)
+        FROM Cita c
+        JOIN c.sesion s
+        LEFT JOIN c.estado e
+        WHERE s.tratamiento.id IN :ids AND c.eliminado = false
+        GROUP BY s.tratamiento.id
+        """)
+    List<Object[]> contarCitasPorTratamiento(@Param("ids") java.util.Collection<Long> ids);
+
     /** Todas las citas de un lote de "citas masivas" — para contar cuántas faltan/se atendieron. */
     List<Cita> findByLoteMasivoIdAndEliminadoFalse(String loteMasivoId);
 

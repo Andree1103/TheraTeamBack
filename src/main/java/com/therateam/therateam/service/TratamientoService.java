@@ -4,6 +4,7 @@ import com.therateam.therateam.dto.SesionDTO;
 import com.therateam.therateam.dto.TratamientoCoberturaDTO;
 import com.therateam.therateam.dto.TratamientoDTO;
 import com.therateam.therateam.model.*;
+import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PagoRepository;
 import com.therateam.therateam.repository.SesionRepository;
 import com.therateam.therateam.repository.TratamientoRepository;
@@ -24,12 +25,39 @@ public class TratamientoService {
     private final TratamientoRepository repository;
     private final SesionRepository sesionRepository;
     private final PagoRepository pagoRepository;
+    private final CitaRepository citaRepository;
 
     @Transactional(readOnly = true)
     public Page<TratamientoDTO> findAllPaged(Pageable pageable, String paciente, String terapeuta,
                                               Long tipoTerapiaId, String estado) {
-        return repository.findAllProjected(blankToNull(paciente), blankToNull(terapeuta),
-                tipoTerapiaId, blankToNull(estado), pageable);
+        return conConteoDeCitas(repository.findAllProjected(blankToNull(paciente), blankToNull(terapeuta),
+                tipoTerapiaId, blankToNull(estado), pageable));
+    }
+
+    /**
+     * Rellena cuantas citas tiene cada paquete, cuantas atendidas y cuantas no asistidas.
+     *
+     * Va aqui y no en la proyeccion porque la consulta de paquetes ya trae lo suyo; sumarle tres
+     * subconsultas correlacionadas la volveria lenta para todas las pantallas, cuando este dato
+     * solo lo mira el listado. Una sola consulta agrupada para toda la pagina: nada de N+1.
+     */
+    private Page<TratamientoDTO> conConteoDeCitas(Page<TratamientoDTO> pagina) {
+        List<Long> ids = pagina.getContent().stream().map(TratamientoDTO::getId).filter(java.util.Objects::nonNull).toList();
+        if (ids.isEmpty()) return pagina;
+        java.util.Map<Long, long[]> porPaquete = new java.util.HashMap<>();
+        for (Object[] f : citaRepository.contarCitasPorTratamiento(ids)) {
+            porPaquete.put(((Number) f[0]).longValue(), new long[]{
+                    f[1] == null ? 0 : ((Number) f[1]).longValue(),
+                    f[2] == null ? 0 : ((Number) f[2]).longValue(),
+                    f[3] == null ? 0 : ((Number) f[3]).longValue()});
+        }
+        pagina.getContent().forEach(dto -> {
+            long[] c = porPaquete.getOrDefault(dto.getId(), new long[]{0, 0, 0});
+            dto.setCitasTotal((int) c[0]);
+            dto.setCitasAtendidas((int) c[1]);
+            dto.setCitasNoAsistidas((int) c[2]);
+        });
+        return pagina;
     }
 
     private static String blankToNull(String s) {

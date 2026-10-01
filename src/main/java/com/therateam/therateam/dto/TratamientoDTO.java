@@ -38,6 +38,18 @@ public class TratamientoDTO {
     private Integer totalSesiones;
     private Integer sesionesAtendidas;
     private Integer sesionesPendientes;
+
+    /**
+     * Citas de este paquete, contadas de verdad — no es lo mismo que las sesiones.
+     *
+     * Una sesion puede no tener cita agendada todavia, y una reprogramada deja dos citas sobre
+     * la misma sesion. Al exportar paquetes hacia falta saber cuantas citas hubo, cuantas se
+     * atendieron y a cuantas no vino el paciente, que es lo que mide si el paquete se esta
+     * consumiendo o se esta perdiendo.
+     */
+    private Integer citasTotal;
+    private Integer citasAtendidas;
+    private Integer citasNoAsistidas;
     private BigDecimal montoTotal;
     private BigDecimal precioPorSesion;
     private BigDecimal totalCobrado;

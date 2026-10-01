@@ -305,9 +305,13 @@ public class CitaService {
             // pagadas o parcialmente pagadas mientras no se hayan atendido todavía.
             boolean fechaCambio = !java.util.Objects.equals(inicioOriginal, data.getFechaInicio())
                     || !java.util.Objects.equals(finOriginal, data.getFechaFin());
-            if (fechaCambio && "ASISTIDA".equals(estadoOriginalKey)) {
-                throw new IllegalArgumentException("No se puede reprogramar una cita que ya fue atendida.");
-            }
+            // Mover de hora una cita ya atendida esta permitido: casi siempre es corregir una
+            // carga mal hecha, y prohibirlo obligaba a deshacer la atencion entera para arreglar
+            // un dedazo. Queda anotado en el historial (ver mas abajo) para que el cambio de una
+            // cita ya cerrada nunca sea invisible.
+            //
+            // Lo que NO se relaja es el dinero: precio, pagos y estado de pago siguen con sus
+            // reglas, para que no se puedan reescribir importes de dias ya cuadrados.
 
             e.setFechaInicio(data.getFechaInicio());
             e.setFechaFin(data.getFechaFin());
@@ -316,13 +320,12 @@ public class CitaService {
             // Cambiar el tipo de terapia solo mientras no haya atencion registrada: una vez
             // atendida, la nota clinica quedo asociada a ese tipo. Antes ni siquiera se aplicaba,
             // asi que la edicion respondia OK y el cambio se perdia.
+            String tipoOriginal = e.getTipoTerapia() != null ? e.getTipoTerapia().getKey() : null;
             if (data.getTipoTerapiaKey() != null && !data.getTipoTerapiaKey().isBlank()) {
-                if ("ASISTIDA".equals(estadoOriginalKey)) {
-                    throw new IllegalArgumentException(
-                            "No se puede cambiar el tipo de terapia de una cita ya atendida.");
-                }
                 tipoTerapiaRepository.findByKey(data.getTipoTerapiaKey()).ifPresent(e::setTipoTerapia);
             }
+            boolean tipoCambio = !java.util.Objects.equals(
+                    tipoOriginal, e.getTipoTerapia() != null ? e.getTipoTerapia().getKey() : null);
             // Salir de ASISTIDA deshace lo que hizo el registro de la atención: si no, la atención
             // quedaba huérfana (visible en el perfil del paciente) y la sesión seguía contando como
             // atendida en su paquete.
@@ -404,6 +407,24 @@ public class CitaService {
                                 "No se puede marcar la cita como Asistida sin un pago registrado — registra al menos un abono primero.");
                     }
                 }
+            }
+
+            // Tocar una cita YA ATENDIDA deja constancia. La edicion normal permite corregirla
+            // (antes habia que deshacer la atencion entera por un dedazo en la hora), pero un
+            // cambio sobre algo ya cerrado no puede ser invisible: si alguien pregunta por que
+            // esta atencion figura a otra hora, el historial lo responde.
+            if ("ASISTIDA".equals(estadoOriginalKey) && (fechaCambio || tipoCambio)) {
+                CitaHistorial h = new CitaHistorial();
+                h.setCita(e);
+                h.setEstadoAnterior(e.getEstado());
+                h.setEstadoNuevo(e.getEstado());
+                h.setFechaAnterior(inicioOriginal);
+                h.setFechaNueva(e.getFechaInicio());
+                h.setCanal("EDICION");
+                h.setMotivo("Se edito una cita ya atendida"
+                        + (fechaCambio ? " — cambio de horario" : "")
+                        + (tipoCambio ? " — cambio de tipo de terapia" : ""));
+                citaHistorialRepository.save(h);
             }
 
             return citaRepository.save(e);
