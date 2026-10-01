@@ -23,7 +23,11 @@ public class ConfiguracionService {
     private static final Map<String, String> CLAVES_NEGOCIO = Map.of(
             "nombre_negocio", "Nombre del negocio/clínica",
             "telefono",       "Teléfono de contacto",
-            "direccion",      "Dirección del negocio"
+            "direccion",      "Dirección del negocio",
+            // Va aquí y no en una pantalla nueva: es un ajuste del negocio, y este mapa ya lo
+            // sirve y lo guarda. Vacío o mal escrito se trata como el valor por defecto (2) en
+            // el front, que es quien decide cuándo pintar el aviso.
+            "paquete_aviso_sesiones", "Avisar cuando a un paquete le queden N sesiones o menos"
     );
 
     /** Si alguna clave todavía no existe en la tabla, se devuelve vacía en vez de fallar. */
