@@ -52,10 +52,15 @@ public class AtencionClinicaService {
         Cita cita = citaRepository.findById(req.getCitaId())
                 .orElseThrow(() -> new IllegalArgumentException("Cita no encontrada: " + req.getCitaId()));
 
-        if (cita.getEstadoPago() == null || !"PAGADA".equals(cita.getEstadoPago().getKey())) {
-            throw new IllegalArgumentException(
-                    "No se puede registrar atención: la cita no está pagada por completo.");
-        }
+        // Antes aqui se exigia que la cita estuviera PAGADA. Se quito, y el motivo importa:
+        // la sesion YA OCURRIO. Negarse a anotarla no cobra nada, solo deja sin registro un
+        // trabajo que se hizo — y empujaba a recepcion a inventar un pago con el metodo "Sin
+        // pago" para desbloquear la pantalla. De ahi salieron un arqueo descuadrado en miles
+        // de soles y saldos a favor creados de la nada al anular esas citas.
+        //
+        // La deuda no desaparece: la cita conserva su precio y su estado de pago, sigue
+        // apareciendo en Pagos como pendiente y en la deuda total del paciente. Lo que cambia
+        // es que el cobro y la historia clinica dejan de estar atados.
 
         boolean esNueva = false;
         AtencionClinica atencion = repository.findByCitaId(req.getCitaId()).orElse(null);
