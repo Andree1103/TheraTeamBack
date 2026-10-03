@@ -636,7 +636,16 @@ public class PagoService {
                 });
             }
 
-            if (montoAplicado.compareTo(BigDecimal.ZERO) > 0 && p.getPaciente() != null && p.getPaciente().getId() != null) {
+            // Si el pago se hizo con un metodo que no es dinero en caja ("Sin pago", "Paquete"),
+            // nunca entro un sol: devolverlo como saldo le regala al paciente un credito que
+            // puede gastar contra dinero que no existe. Pasaba de verdad — una cita marcada
+            // pagada con "Sin pago" y luego anulada dejaba S/ 50 a favor de la nada, y dos de
+            // esas, S/ 100. La cita si se deja sin pago; lo que no se crea es el credito.
+            boolean elDineroNuncaEntro = p.getMetodo() != null && !p.getMetodo().cuentaEnCajaOEsDinero();
+
+            if (!elDineroNuncaEntro
+                    && montoAplicado.compareTo(BigDecimal.ZERO) > 0
+                    && p.getPaciente() != null && p.getPaciente().getId() != null) {
                 pacienteRepository.findById(p.getPaciente().getId()).ifPresent(paciente -> {
                     BigDecimal saldo = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
                     BigDecimal nuevo = saldo.add(montoAplicado);
