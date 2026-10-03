@@ -2,6 +2,7 @@ package com.therateam.therateam.model;
 
 import com.therateam.therateam.config.SecurityUtils;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -25,10 +26,21 @@ public class Pago {
     @JoinColumn(name = "paciente_id")
     private Paciente paciente;
 
-    @NotNull(message = "El método de pago es obligatorio")
+    /**
+     * Como entro el dinero. Puede ir vacio SOLO cuando no entro ninguno (ver
+     * {@link #tieneMetodoCuandoEntraDinero()}): pagar con el saldo a favor no es un medio de
+     * pago — ese dinero ya entro el dia del adelanto, con el medio que tuviera entonces, y
+     * obligar a elegir uno aqui lo contaria dos veces en la caja.
+     */
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "metodo_id")
     private CatMetodoPago metodo;
+
+    @AssertTrue(message = "El método de pago es obligatorio")
+    public boolean tieneMetodoCuandoEntraDinero() {
+        if (montoRecibido == null || montoRecibido.compareTo(BigDecimal.ZERO) <= 0) return true;
+        return metodo != null;
+    }
 
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "cita_id")

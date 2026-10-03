@@ -29,6 +29,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
           AND (m IS NULL OR m.cuentaEnCaja IS NULL OR m.cuentaEnCaja = true)
         GROUP BY m.id, m.nombre
+        HAVING SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END) <> 0
         """)
     List<Object[]> sumMontoPorMetodoEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
                                                  @Param("finDia") LocalDateTime finDia);
