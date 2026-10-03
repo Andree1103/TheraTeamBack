@@ -18,13 +18,21 @@ public class CatMetodoPagoService {
 
     public Optional<CatMetodoPago> findById(Long id) { return repository.findById(id); }
 
-    public CatMetodoPago save(CatMetodoPago metodo) { return repository.save(metodo); }
+    public CatMetodoPago save(CatMetodoPago metodo) {
+        // Un metodo nuevo es dinero salvo que se diga lo contrario.
+        if (metodo.getCuentaEnCaja() == null) metodo.setCuentaEnCaja(true);
+        return repository.save(metodo);
+    }
 
     public Optional<CatMetodoPago> update(Long id, CatMetodoPago data) {
         return repository.findById(id).map(existing -> {
             existing.setKey(data.getKey());
             existing.setNombre(data.getNombre());
             existing.setActivo(data.getActivo());
+            // Si no viene (cliente viejo), se conserva lo que ya estaba en vez de asumir que si
+            // es dinero: un metodo marcado como "no cuenta en caja" no debe volver al arqueo
+            // porque alguien renombro el metodo desde una pantalla que no manda el campo.
+            if (data.getCuentaEnCaja() != null) existing.setCuentaEnCaja(data.getCuentaEnCaja());
             return repository.save(existing);
         });
     }

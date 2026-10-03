@@ -27,6 +27,15 @@ public class CajaResumenDTO {
     private List<IngresoConcepto> ingresosPorConcepto;
     /** Qué productos se vendieron en este turno — el detalle detrás de la fila "Productos". */
     private List<VentaResumenDTO> ventasPorProducto;
+    /**
+     * Cobros del turno con un metodo marcado como "no es dinero en caja" (ej. "Sin pago").
+     *
+     * NO entran en totalIngresos ni en el saldo final: de eso no hay nada en el cajon. Se
+     * mandan igual para que el cierre pueda mostrarlos aparte — si no se vieran, la pregunta
+     * "¿y lo que registre hoy?" no tendria respuesta en la pantalla donde se hace el arqueo.
+     */
+    private List<IngresoMetodo> ingresosFueraDeCaja;
+    private BigDecimal totalFueraDeCaja;
     private BigDecimal totalIngresos;
     private BigDecimal egresos;
     private String comentario;

@@ -83,6 +83,19 @@ public class CajaService {
                 .map(CajaResumenDTO.IngresoMetodo::getMonto)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // Lo cobrado con un metodo que no es dinero en caja. Va aparte y no toca el arqueo:
+        // el cierre tiene que cuadrar contra lo que hay en el cajon, y de esto no hay nada.
+        List<CajaResumenDTO.IngresoMetodo> fueraDeCaja = pagoRepository
+                .sumFueraDeCajaEntreFechas(inicioRango, finRango).stream()
+                .map(row -> new CajaResumenDTO.IngresoMetodo(
+                        (Long) row[0],
+                        row[1] != null ? (String) row[1] : "Sin método",
+                        (BigDecimal) row[2]))
+                .collect(Collectors.toList());
+        BigDecimal totalFueraDeCaja = fueraDeCaja.stream()
+                .map(CajaResumenDTO.IngresoMetodo::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         // El mismo dinero, cortado por concepto en vez de por método de pago. Son excluyentes
         // entre sí y su suma da totalIngresos — dos vistas del mismo total, no dos totales.
         List<CajaResumenDTO.IngresoConcepto> ingresosPorConcepto = new java.util.ArrayList<>();
@@ -110,7 +123,8 @@ public class CajaService {
         BigDecimal saldoFinal = saldoInicial.add(totalIngresos).subtract(egresos);
 
         return new CajaResumenDTO(fecha, turno, corte.format(DateTimeFormatter.ofPattern("HH:mm")),
-                saldoInicial, ingresosPorMetodo, ingresosPorConcepto, ventasPorProducto, totalIngresos,
+                saldoInicial, ingresosPorMetodo, ingresosPorConcepto, ventasPorProducto,
+                fueraDeCaja, totalFueraDeCaja, totalIngresos,
                 egresos, comentario, saldoFinal, cerrado, cerradoPorNombre);
     }
 

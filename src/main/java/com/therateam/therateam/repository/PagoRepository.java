@@ -25,16 +25,32 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT m.id, m.nombre,
                SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END)
         FROM Pago pg
-        LEFT JOIN pg.cita cc
-        LEFT JOIN cc.terapeuta terc
-        LEFT JOIN terc.usuario uc2
-        LEFT JOIN cc.tipoTerapia ttc
         LEFT JOIN pg.metodo m
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND (m IS NULL OR m.cuentaEnCaja IS NULL OR m.cuentaEnCaja = true)
         GROUP BY m.id, m.nombre
         """)
     List<Object[]> sumMontoPorMetodoEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
                                                  @Param("finDia") LocalDateTime finDia);
+
+    /**
+     * Lo contrario: los pagos del dia con un metodo marcado como "no es dinero en caja".
+     *
+     * No entran en el arqueo —no hay nada de eso en el cajon— pero tampoco se esconden: el
+     * cierre los lista aparte. Si no se vieran, la pregunta "¿y los S/ 5,290 que cobre hoy?"
+     * no tendria respuesta en la pantalla donde se hace.
+     */
+    @Query("""
+        SELECT m.id, m.nombre,
+               SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END)
+        FROM Pago pg
+        JOIN pg.metodo m
+        WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND m.cuentaEnCaja = false
+        GROUP BY m.id, m.nombre
+        """)
+    List<Object[]> sumFueraDeCajaEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
+                                              @Param("finDia") LocalDateTime finDia);
 
     /*
      * Los tres conceptos del cierre de caja. Van como consultas separadas y no como un
@@ -50,6 +66,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
         FROM Pago pg
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND (pg.metodo IS NULL OR pg.metodo.cuentaEnCaja IS NULL OR pg.metodo.cuentaEnCaja = true)
           AND pg.esAdicional = false
         """)
     BigDecimal sumTerapiasEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
@@ -60,6 +77,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
         FROM Pago pg
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND (pg.metodo IS NULL OR pg.metodo.cuentaEnCaja IS NULL OR pg.metodo.cuentaEnCaja = true)
           AND EXISTS (SELECT 1 FROM VentaItem vi WHERE vi.pagoId = pg.id)
         """)
     BigDecimal sumProductosEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
@@ -70,6 +88,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
         FROM Pago pg
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND (pg.metodo IS NULL OR pg.metodo.cuentaEnCaja IS NULL OR pg.metodo.cuentaEnCaja = true)
           AND pg.esAdicional = true
           AND NOT EXISTS (SELECT 1 FROM VentaItem vi WHERE vi.pagoId = pg.id)
         """)
