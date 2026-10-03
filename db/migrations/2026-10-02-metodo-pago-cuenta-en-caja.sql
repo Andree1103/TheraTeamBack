@@ -17,4 +17,16 @@ ALTER TABLE cat_metodos_pago
 COMMENT ON COLUMN cat_metodos_pago.cuenta_en_caja IS
   'false = los pagos con este metodo no suman al arqueo del cierre de caja (no es dinero que entre al cajon ese dia).';
 
+-- Los que ya se sabe que no son dinero se marcan solos: un metodo llamado "Sin pago" no es
+-- un cobro por definicion, y "Paquete" significa que la sesion la cubre un paquete cobrado
+-- aparte. Hacerlo aqui evita que el arreglo dependa de que alguien se acuerde de configurarlo
+-- despues de desplegar — que es justo el rato en que la caja seguiria descuadrada.
+--
+-- Es solo el valor inicial: si alguno de los dos si fuera dinero, se vuelve a poner en "Si"
+-- desde Configuraciones > Metodos de pago y manda eso.
+UPDATE cat_metodos_pago
+   SET cuenta_en_caja = false
+ WHERE lower(btrim(nombre)) IN ('sin pago', 'paquete')
+   AND cuenta_en_caja = true;
+
 SELECT id, nombre, activo, cuenta_en_caja FROM cat_metodos_pago ORDER BY id;
