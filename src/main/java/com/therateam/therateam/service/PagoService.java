@@ -569,6 +569,25 @@ public class PagoService {
     }
 
     /**
+     * ¿Al paquete entro dinero de verdad alguna vez?
+     *
+     * Mismo criterio que para una cita suelta: un paquete "cobrado" con el metodo "Sin pago" o
+     * "Paquete" no trajo un sol — es una anotacion. Si al anular una de sus sesiones se devuelve
+     * ese importe como saldo a favor, se le regala al paciente un credito que puede gastar
+     * contra dinero que nunca existio.
+     *
+     * Basta con que UNO de sus pagos haya sido dinero: ahi si hay algo que devolver, y partirlo
+     * sesion por sesion seria precision falsa sobre un reparto que el sistema no guarda.
+     */
+    public boolean elPaqueteRecibioDinero(Long tratamientoId) {
+        return repository.findByTratamientoId(tratamientoId).stream()
+                .filter(p -> !Boolean.TRUE.equals(p.getEsDevolucion()))
+                .filter(p -> p.getMontoRecibido() != null
+                          && p.getMontoRecibido().compareTo(BigDecimal.ZERO) > 0)
+                .anyMatch(p -> p.getMetodo() == null || p.getMetodo().cuentaEnCajaOEsDinero());
+    }
+
+    /**
      * Elimina el pago y deshace todo su efecto: saldo del paciente, total del paquete y estado de
      * pago de las citas que cubría.
      *

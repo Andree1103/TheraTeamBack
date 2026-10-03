@@ -572,12 +572,16 @@ public class CitaService {
                     String numeroSesion = cita.getSesion().getNumero() != null ? " #" + cita.getSesion().getNumero() : "";
                     pagoService.crearDevolucionManual(cita.getPaciente(), tratamiento, cita, montoDeEstaSesion, metodoResuelto,
                             "Devolución por " + porQue + " de sesión" + numeroSesion + " del paquete " + tratamiento.getNombre());
-                } else {
+                } else if (pagoService.elPaqueteRecibioDinero(tratamiento.getId())) {
                     String numeroSesion = cita.getSesion().getNumero() != null ? " #" + cita.getSesion().getNumero() : "";
                     sumarSaldoAFavor(cita.getPaciente(), montoDeEstaSesion,
                             capitalizar(porQue) + " de sesión" + numeroSesion
                             + " del paquete " + tratamiento.getNombre(), cita);
                 }
+                // Si al paquete nunca entro dinero (se "cobro" con "Sin pago" o "Paquete"), la
+                // sesion se deja sin pago igual pero NO se genera saldo: devolver algo que no
+                // se recibio es crear credito de la nada. Mismo criterio que en las citas
+                // sueltas, en PagoService.revertirComoSaldoAFavor.
             }
             cita.setMontoPagado(BigDecimal.ZERO);
             cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey("SIN_PAGO").orElse(null));
