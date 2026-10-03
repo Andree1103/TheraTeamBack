@@ -22,6 +22,7 @@ public class AtencionClinicaService {
     private final TratamientoRepository tratamientoRepository;
     private final CatEstadoSesionRepository catEstadoSesionRepository;
     private final CatEstadoCitaRepository catEstadoCitaRepository;
+    private final CatEstadoPagoCitaRepository catEstadoPagoCitaRepository;
     /** Para devolver el dinero de una inasistencia por el mismo camino que lo hace anular. */
     private final CitaService citaService;
     private final CitaHistorialRepository citaHistorialRepository;
@@ -181,6 +182,13 @@ public class AtencionClinicaService {
         // en SIN_PAGO) pero es un doble abono esperando a que cambie algo aguas abajo.
         if (devolver && !yaSeDevolvio) {
             citaService.revertirDinero(cita, false, null, "inasistencia");
+        } else if (cobrado.compareTo(java.math.BigDecimal.ZERO) > 0) {
+            // Sin devolucion, el dinero se queda en la clinica. Antes la cita seguia en PAGADA,
+            // indistinguible de una sesion que si se dio: en la ficha se leia "No asistio /
+            // Pagada", que suena a error, y en cualquier recuento el cobro por trabajo hecho y
+            // el cobro por penalidad caian en la misma bolsa. DESCONTADA es lo mismo en dinero
+            // —no se mueve un sol— pero dicho con su nombre.
+            catEstadoPagoCitaRepository.findByKey("DESCONTADA").ifPresent(cita::setEstadoPago);
         }
 
         cita.setMotivoEstado(limpioMotivo);

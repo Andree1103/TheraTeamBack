@@ -215,10 +215,7 @@ public class CitaService {
                 cita.setPrecio(req.getPrecio());
                 // El estado de pago se deriva del precio: si cambia el precio y no se recalcula,
                 // una cita cobrada entera puede quedar figurando como PAGADA debiendo plata.
-                BigDecimal pagado = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
-                String keyPago = pagado.compareTo(req.getPrecio()) >= 0 ? "PAGADA"
-                        : (pagado.compareTo(BigDecimal.ZERO) > 0 ? "PARCIAL" : "SIN_PAGO");
-                catEstadoPagoCitaRepository.findByKey(keyPago).ifPresent(cita::setEstadoPago);
+                aplicarEstadoPagoDerivado(cita, req.getPrecio());
             }
 
             if (req.getMetodoPagoId() != null) {
@@ -350,6 +347,16 @@ public class CitaService {
             if ("ASISTIDA".equals(estadoOriginalKey) && !"ASISTIDA".equals(estadoNuevoKey)) {
                 revertirAtencion(e);
             }
+
+            // DESCONTADA solo tiene sentido mientras la cita sea una inasistencia. Si se la saca
+            // de NO_ASISTIO (se corrige el estado porque el paciente si vino, por ejemplo), ese
+            // dinero vuelve a ser el cobro normal de la sesion y el estado de pago vuelve a
+            // derivarse del precio. Sin esto, la cita quedaba "Programada / Descontada".
+            if ("NO_ASISTIO".equals(estadoOriginalKey) && !"NO_ASISTIO".equals(estadoNuevoKey)
+                    && e.getEstadoPago() != null && "DESCONTADA".equals(e.getEstadoPago().getKey())) {
+                aplicarEstadoPagoDerivado(e, e.getPrecio());
+            }
+
             e.setEstado(data.getEstado());
             e.setLinkVideollamada(data.getLinkVideollamada());
             e.setNotasPrevias(data.getNotasPrevias());
@@ -368,10 +375,7 @@ public class CitaService {
                 boolean precioCambio = precioAnterior == null
                         || precioAnterior.compareTo(data.getPrecio()) != 0;
                 if (precioCambio && data.getPrecio().compareTo(BigDecimal.ZERO) > 0) {
-                    BigDecimal pagado = e.getMontoPagado() != null ? e.getMontoPagado() : BigDecimal.ZERO;
-                    String keyPago = pagado.compareTo(data.getPrecio()) >= 0 ? "PAGADA"
-                            : (pagado.compareTo(BigDecimal.ZERO) > 0 ? "PARCIAL" : "SIN_PAGO");
-                    catEstadoPagoCitaRepository.findByKey(keyPago).ifPresent(e::setEstadoPago);
+                    aplicarEstadoPagoDerivado(e, data.getPrecio());
                 }
             }
 
@@ -1221,6 +1225,24 @@ public class CitaService {
             throw new IllegalArgumentException(
                     "El terapeuta no atiende en ese horario (fuera de su horario habitual o bloqueado por una excepción).");
         }
+    }
+
+    /**
+     * El estado de pago que le toca a una cita por lo que debe y lo que lleva pagado.
+     *
+     * Es derivado, no se elige: cambiar el precio sin recalcularlo dejaba citas mintiendo —subir
+     * el precio de una cita ya cobrada la mantenia en PAGADA aunque quedara saldo, y la deuda
+     * desaparecia de la vista. DESCONTADA no sale de aqui: no se deriva del dinero sino del
+     * hecho de que el paciente no vino, y lo pone la inasistencia.
+     */
+    private void aplicarEstadoPagoDerivado(Cita cita, BigDecimal precio) {
+        BigDecimal debe   = precio != null ? precio : BigDecimal.ZERO;
+        BigDecimal pagado = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
+        String key;
+        if (pagado.compareTo(BigDecimal.ZERO) <= 0) key = "SIN_PAGO";
+        else if (pagado.compareTo(debe) >= 0)       key = "PAGADA";
+        else                                        key = "PARCIAL";
+        catEstadoPagoCitaRepository.findByKey(key).ifPresent(cita::setEstadoPago);
     }
 
     /** No se puede meter a más pacientes de los que admite el tipo de terapia en ese bloque. */
