@@ -28,7 +28,7 @@ public class Pago {
 
     /**
      * Como entro el dinero. Puede ir vacio SOLO cuando no entro ninguno (ver
-     * {@link #tieneMetodoCuandoEntraDinero()}): pagar con el saldo a favor no es un medio de
+     * {@link #isMetodoPresenteCuandoEntraDinero()}): pagar con el saldo a favor no es un medio de
      * pago — ese dinero ya entro el dia del adelanto, con el medio que tuviera entonces, y
      * obligar a elegir uno aqui lo contaria dos veces en la caja.
      */
@@ -36,8 +36,26 @@ public class Pago {
     @JoinColumn(name = "metodo_id")
     private CatMetodoPago metodo;
 
+    /**
+     * El dinero no entra manana.
+     *
+     * "Fecha de pago" se puede escribir a mano —hace falta, para registrar un cobro de ayer que
+     * no se alcanzo a cargar— pero nada impedia teclear una fecha futura. Paso: un cobro del 1
+     * de octubre quedo fechado el 8, y esos S/ 60 no aparecian en el arqueo de ningun dia hasta
+     * entonces. Dinero real, invisible durante una semana.
+     *
+     * Se deja un margen de unos minutos por si el reloj del navegador va algo adelantado
+     * respecto al del servidor; lo que se rechaza es la fecha escrita a mano, no el desfase.
+     */
+    @AssertTrue(message = "La fecha de pago no puede ser futura")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isFechaDePagoNoFutura() {
+        return fechaPago == null || !fechaPago.isAfter(LocalDateTime.now().plusMinutes(10));
+    }
+
     @AssertTrue(message = "El método de pago es obligatorio")
-    public boolean tieneMetodoCuandoEntraDinero() {
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isMetodoPresenteCuandoEntraDinero() {
         if (montoRecibido == null || montoRecibido.compareTo(BigDecimal.ZERO) <= 0) return true;
         return metodo != null;
     }
