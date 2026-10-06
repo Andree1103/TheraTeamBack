@@ -27,6 +27,8 @@ public class CajaResumenDTO {
     private List<IngresoConcepto> ingresosPorConcepto;
     /** Qué productos se vendieron en este turno — el detalle detrás de la fila "Productos". */
     private List<VentaResumenDTO> ventasPorProducto;
+    /** Qué se cobró aparte sin producto detrás — el detalle de la fila "Otros cobros". */
+    private List<CobroAdicionalDTO> cobrosAdicionales;
     /**
      * Cobros del turno con un metodo marcado como "no es dinero en caja" (ej. "Sin pago").
      *

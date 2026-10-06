@@ -97,6 +97,31 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
                                           @Param("finDia") LocalDateTime finDia);
 
     /**
+     * El detalle detras de la fila "Otros cobros": que se cobro aparte, a quien y por cuanto.
+     *
+     * Mismo criterio que la suma de esa fila —adicional, sin lineas de venta y con un metodo
+     * que sea dinero— para que el desglose cuadre contra ella y no contra otra cosa.
+     */
+    @Query("""
+        SELECT new com.therateam.therateam.dto.CobroAdicionalDTO(
+            pg.id, pg.fechaPago,
+            CONCAT(pac.nombre, ' ', pac.apellido),
+            COALESCE(pg.concepto, pg.notas),
+            m.nombre,
+            CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END)
+        FROM Pago pg
+        LEFT JOIN pg.paciente pac
+        LEFT JOIN pg.metodo m
+        WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND (m IS NULL OR m.cuentaEnCaja IS NULL OR m.cuentaEnCaja = true)
+          AND pg.esAdicional = true
+          AND NOT EXISTS (SELECT 1 FROM VentaItem vi WHERE vi.pagoId = pg.id)
+        ORDER BY pg.fechaPago
+        """)
+    List<com.therateam.therateam.dto.CobroAdicionalDTO> cobrosAdicionalesEntreFechas(
+            @Param("inicioDia") LocalDateTime inicioDia, @Param("finDia") LocalDateTime finDia);
+
+    /**
      * Proyección liviana para listados: evita la cadena EAGER completa de Pago.tratamiento
      * (Terapeuta->Usuario/TipoTerapeuta/Area/especialidades, TipoTerapia->Area, etc.) — pero sí
      * trae terapeuta/tipo/DNI planos, que la tabla de Pagos sí necesita mostrar.

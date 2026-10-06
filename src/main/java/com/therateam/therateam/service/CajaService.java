@@ -109,6 +109,10 @@ public class CajaService {
         // Qué se vendió en el turno: el detalle detrás de la fila "Productos".
         List<VentaResumenDTO> ventasPorProducto = ventaItemRepository.resumenPorProducto(inicioRango, finRango);
 
+        // Y el detalle de la otra fila del mismo bloque: los cobros aparte que no son producto.
+        List<com.therateam.therateam.dto.CobroAdicionalDTO> cobrosAdicionales =
+                pagoRepository.cobrosAdicionalesEntreFechas(inicioRango, finRango);
+
         BigDecimal saldoInicial = cierreCajaRepository.findAnteriores(fecha, turno, PageRequest.of(0, 1))
                 .stream().findFirst().map(CierreCaja::getSaldoFinal).orElse(BigDecimal.ZERO);
 
@@ -124,7 +128,7 @@ public class CajaService {
 
         return new CajaResumenDTO(fecha, turno, corte.format(DateTimeFormatter.ofPattern("HH:mm")),
                 saldoInicial, ingresosPorMetodo, ingresosPorConcepto, ventasPorProducto,
-                fueraDeCaja, totalFueraDeCaja, totalIngresos,
+                cobrosAdicionales, fueraDeCaja, totalFueraDeCaja, totalIngresos,
                 egresos, comentario, saldoFinal, cerrado, cerradoPorNombre);
     }
 
