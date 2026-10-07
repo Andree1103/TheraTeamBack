@@ -184,3 +184,16 @@ WHERE ep.key='PAGADA' AND COALESCE(c.precio,0) <= 0 AND c.eliminado=false;
 \echo ''
 \echo '=== T. Stock negativo en productos ==='
 SELECT count(*) AS productos_con_stock_negativo FROM productos WHERE COALESCE(stock,0) < 0;
+
+\echo ''
+\echo '=== U. Citas donde lo pagado supera al precio (precio bajado despues de cobrar) ==='
+\echo '    No es fuga ni error: es dinero del paciente que deberia pasar a su saldo a favor.'
+\echo '    No se pone como restriccion de la base porque rebajar un precio ya cobrado es legitimo.'
+SELECT c.id AS cita, p.nombre || ' ' || p.apellido AS paciente, c.precio, c.monto_pagado,
+       c.monto_pagado - c.precio AS de_mas
+FROM citas c JOIN pacientes p ON p.id = c.paciente_id
+JOIN cat_estados_cita e ON e.id = c.estado_id
+WHERE c.eliminado = false
+  AND COALESCE(c.monto_pagado,0) > COALESCE(c.precio,0)
+  AND e.key NOT IN ('ANULADA','NO_ASISTIO','REPROGRAMADA')
+ORDER BY 5 DESC;
