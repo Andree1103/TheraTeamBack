@@ -101,14 +101,51 @@ public class TratamientoService {
         });
     }
 
+    /**
+     * Borra el paquete con sus sesiones y las citas que cuelgan de ellas.
+     *
+     * Antes se negaba si el paquete tenia sesiones — y TODO paquete tiene sesiones, se crean con
+     * el. O sea: no habia forma de borrar ninguno, ni el que se acababa de crear por error con
+     * el paciente equivocado. Lo unico que de verdad no se puede tirar es la historia: si ya
+     * entro dinero o si alguna sesion se atendio, hay que resolver eso antes.
+     *
+     * Hay un ciclo entre citas y sesiones (citas.sesion_id y sesiones.cita_activa_id), asi que
+     * se sueltan las dos referencias antes de borrar nada.
+     */
+    @Transactional
     public boolean delete(Long id) {
         if (!repository.existsById(id)) return false;
+
         if (!pagoRepository.findByTratamientoId(id).isEmpty()) {
-            throw new IllegalArgumentException("No se puede eliminar: este paquete ya tiene pagos registrados. Elimina primero esos pagos.");
+            throw new IllegalArgumentException(
+                    "No se puede eliminar: este paquete ya tiene pagos registrados. Elimina primero esos pagos desde Pagos.");
         }
-        if (!sesionRepository.findByTratamientoId(id).isEmpty()) {
-            throw new IllegalArgumentException("No se puede eliminar: este paquete ya tiene sesiones/citas creadas.");
+
+        List<Sesion> sesiones = sesionRepository.findByTratamientoId(id);
+        List<Long> sesionIds = sesiones.stream().map(Sesion::getId).toList();
+        List<Cita> citas = sesionIds.isEmpty() ? List.of() : citaRepository.findBySesionIdIn(sesionIds);
+
+        boolean hayAtendidas = citas.stream().anyMatch(c ->
+                c.getEstado() != null && "ASISTIDA".equals(c.getEstado().getKey()));
+        if (hayAtendidas) {
+            throw new IllegalArgumentException(
+                    "No se puede eliminar: este paquete ya tiene sesiones atendidas. Anulalo en vez de borrarlo.");
         }
+        boolean hayCobradas = citas.stream().anyMatch(c ->
+                c.getMontoPagado() != null && c.getMontoPagado().compareTo(java.math.BigDecimal.ZERO) > 0);
+        if (hayCobradas) {
+            throw new IllegalArgumentException(
+                    "No se puede eliminar: alguna sesion de este paquete ya tiene dinero cobrado. Anulalo en vez de borrarlo.");
+        }
+
+        // Se rompe el ciclo citas <-> sesiones antes de borrar ninguna de las dos.
+        for (Sesion s : sesiones) { s.setCitaActiva(null); }
+        sesionRepository.saveAll(sesiones);
+        for (Cita c : citas) { c.setSesion(null); }
+        citaRepository.saveAll(citas);
+
+        citaRepository.deleteAll(citas);
+        sesionRepository.deleteAll(sesiones);
         repository.deleteById(id);
         return true;
     }

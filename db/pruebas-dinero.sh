@@ -86,5 +86,26 @@ check "saldo tras el adelanto" "70.00" "$(saldo $P9)"
 curl -s -o /dev/null -X DELETE "$API/api/pagos/$PID" -H "Authorization: Bearer $TOK"
 check "saldo tras eliminarlo" "0.00" "$(saldo $P9)"
 
+echo "== 11. Borrar un paquete: se puede si no hay historia, no si la hay =="
+read P T TT ET <<< $(q "SELECT c.paciente_id||' '||c.terapeuta_id||' '||c.tipo_terapia_id||' '||(SELECT id FROM cat_estados_tratamiento LIMIT 1) FROM citas c WHERE c.terapeuta_id IS NOT NULL AND c.tipo_terapia_id IS NOT NULL LIMIT 1")
+nuevoPaquete() {
+  curl -s -X POST "$API/api/tratamientos" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json"     -d "{\"paciente\":{\"id\":$P},\"terapeuta\":{\"id\":$T},\"tipoTerapia\":{\"id\":\"$TT\"},\"nombre\":\"bateria\",\"totalSesiones\":2,\"precioPorSesion\":50,\"estado\":{\"id\":$ET},\"fechaInicio\":\"2026-10-06\"}"     | python -c "import sys,json;print(json.load(sys.stdin)['id'])"
+}
+conSesiones() { # $1 paquete, $2 estado cita, $3 estado pago, $4 monto pagado
+  x "INSERT INTO sesiones (tratamiento_id, numero, estado_id, created_at, updated_at) SELECT $1, g, (SELECT id FROM cat_estados_sesion LIMIT 1), now(), now() FROM generate_series(1,2) g;
+     INSERT INTO citas (paciente_id, terapeuta_id, tipo_terapia_id, sesion_id, fecha_inicio, fecha_fin, duracion_minutos, estado_id, modalidad_id, estado_pago_id, precio, monto_pagado, eliminado, created_at, updated_at, recordatorio_enviado)
+     SELECT t.paciente_id, t.terapeuta_id, t.tipo_terapia_id, s.id, '2026-11-02 09:00', '2026-11-02 09:40', 40, (SELECT id FROM cat_estados_cita WHERE key='$2'), (SELECT id FROM cat_modalidades LIMIT 1), (SELECT id FROM cat_estados_pago_cita WHERE key='$3'), 50, $4, false, now(), now(), false
+     FROM sesiones s JOIN tratamientos t ON t.id=s.tratamiento_id WHERE s.tratamiento_id=$1;"
+}
+borrar() { curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/api/tratamientos/$1" -H "Authorization: Bearer $TOK"; }
+limpiar() { x "UPDATE sesiones SET cita_activa_id=NULL WHERE tratamiento_id=$1; DELETE FROM citas WHERE sesion_id IN (SELECT id FROM sesiones WHERE tratamiento_id=$1); DELETE FROM sesiones WHERE tratamiento_id=$1; DELETE FROM tratamientos WHERE id=$1;"; }
+
+PQ=$(nuevoPaquete); conSesiones $PQ PROGRAMADA SIN_PAGO 0
+check "paquete sin historia se borra" "204" "$(borrar $PQ)"
+PQ=$(nuevoPaquete); conSesiones $PQ ASISTIDA PAGADA 50
+check "paquete con sesion atendida se niega" "400" "$(borrar $PQ)"; limpiar $PQ
+PQ=$(nuevoPaquete); conSesiones $PQ PROGRAMADA PARCIAL 30
+check "paquete con dinero cobrado se niega" "400" "$(borrar $PQ)"; limpiar $PQ
+
 echo
 echo "RESULTADO: $OK correctos, $KO fallos"

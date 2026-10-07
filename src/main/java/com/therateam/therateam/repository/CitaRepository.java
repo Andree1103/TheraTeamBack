@@ -253,4 +253,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         ORDER BY c.fechaInicio DESC
         """)
     List<CitaDTO> findByPacienteIdProjected(@Param("pacienteId") Long pacienteId);
+
+    /** Las citas colgadas de esas sesiones — para poder borrar un paquete entero de una vez. */
+    List<Cita> findBySesionIdIn(java.util.Collection<Long> sesionIds);
 }
