@@ -49,6 +49,36 @@ public class Pago {
     private Boolean trajoDinero;
 
     /** Ante un nulo (fila anterior a la migracion) manda el metodo, como se hacia antes. */
+    /**
+     * Lo que el paciente puso de su bolsillo en este cobro, venga de donde venga.
+     *
+     * Son dos cosas distintas y las dos son suyas: el efectivo que entrego ahora, y el saldo a
+     * favor que se le consumio — que era dinero que habia entregado antes. Si se anula el cobro,
+     * tiene derecho a recuperar la suma de ambos.
+     *
+     * No es lo mismo que trajoDineroDeVerdad(), que responde "¿entro efectivo a la caja HOY?".
+     * Confundirlas costo un fallo: un cobro pagado con el saldo del paciente responde NO a esa
+     * pregunta, asi que al anularlo no se le devolvia nada y el dinero se evaporaba. La pregunta
+     * buena no es si la caja lo vio, es si el paciente lo puso.
+     *
+     * Un cobro con "Sin pago" o "Paquete" sigue dando cero: ahi no puso nada, solo se dejo
+     * constancia.
+     */
+    public BigDecimal loQuePusoElPaciente() {
+        BigDecimal enEfectivo = trajoDineroDeVerdad() && montoRecibido != null
+                ? montoRecibido.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal deSuSaldo = (saldoPrevio != null ? saldoPrevio : BigDecimal.ZERO)
+                .subtract(saldoGenerado != null ? saldoGenerado : BigDecimal.ZERO)
+                .max(BigDecimal.ZERO);
+        return enEfectivo.add(deSuSaldo);
+    }
+
+    /** Solo la parte que entro como dinero contante: lo unico que se puede devolver en mano. */
+    public BigDecimal elEfectivoQueEntro() {
+        return trajoDineroDeVerdad() && montoRecibido != null
+                ? montoRecibido.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+    }
+
     public boolean trajoDineroDeVerdad() {
         if (trajoDinero != null) return trajoDinero;
         return metodo != null && metodo.cuentaEnCajaOEsDinero();
@@ -89,6 +119,19 @@ public class Pago {
     private BigDecimal montoAplicado;
     private BigDecimal saldoGenerado;
     private BigDecimal saldoPrevio;
+
+    /**
+     * Cuanto del saldo a favor se quiere usar en ESTE cobro. No se guarda: es una instruccion.
+     *
+     * Lo que se guarda es el resultado (saldoPrevio y saldoGenerado), que ya dice cuanto se
+     * consumio. Esto es lo que pide quien cobra, y hacia falta porque antes no habia forma de
+     * pedir "cobrale 45 y no le toques los 190 que tiene": el motor los gastaba igual.
+     *
+     * null = el de siempre, todo el saldo disponible. 0 = no usar nada.
+     */
+    @Transient
+    private BigDecimal saldoAAplicar;
+
     private String referencia;
     private String notas;
     private LocalDateTime fechaPago;

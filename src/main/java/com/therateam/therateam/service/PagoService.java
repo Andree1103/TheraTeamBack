@@ -122,7 +122,23 @@ public class PagoService {
 
         BigDecimal montoRecibido  = p.getMontoRecibido() != null ? p.getMontoRecibido() : BigDecimal.ZERO;
         BigDecimal saldoPrevio    = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
-        BigDecimal montoDisponible = montoRecibido.add(saldoPrevio);
+
+        // Cuanto del saldo se pone sobre la mesa lo decide quien cobra, no este metodo.
+        //
+        // Antes el saldo entero entraba SIEMPRE en el reparto: disponible = recibido + saldo, y
+        // se gastaba lo que cupiera en la deuda. Nadie podia decir que no. Paso de verdad: un
+        // paquete de 5x47 con un cobro de S/ 45 registrado se llevo por delante los S/ 190 que
+        // el paciente tenia a favor, dejo las cinco sesiones PAGADAS y la deuda en cero. El
+        // operador apunto 45; el sistema gasto 235.
+        //
+        // Con saldoAAplicar en null se mantiene el comportamiento de antes, para no cambiarle el
+        // significado a las llamadas que todavia no lo mandan. Quien lo manda, manda: 0 significa
+        // "no toques su saldo", y el sobrante no ofrecido se le devuelve intacto mas abajo.
+        BigDecimal saldoOfrecido = p.getSaldoAAplicar() == null
+                ? saldoPrevio
+                : p.getSaldoAAplicar().max(BigDecimal.ZERO).min(saldoPrevio);
+        BigDecimal saldoReservado = saldoPrevio.subtract(saldoOfrecido);
+        BigDecimal montoDisponible = montoRecibido.add(saldoOfrecido);
 
         Cita citaAsociada = null;
         if (p.getCita() != null && p.getCita().getId() != null) {
@@ -227,7 +243,9 @@ public class PagoService {
         }
 
         BigDecimal montoAplicado = montoDisponible.min(deudaPendiente);
-        BigDecimal saldoGenerado = montoDisponible.subtract(montoAplicado);
+        // Lo que sobra de lo ofrecido vuelve a favor, y con ello lo que ni siquiera se ofrecio:
+        // el saldo reservado no participa del cobro, pero sigue siendo suyo.
+        BigDecimal saldoGenerado = montoDisponible.subtract(montoAplicado).add(saldoReservado);
 
         p.setSaldoPrevio(saldoPrevio);
         p.setMontoAplicado(montoAplicado);
@@ -540,7 +558,20 @@ public class PagoService {
 
         revertir(original); // deshace el efecto en tratamiento/cita y restaura el saldo previo del paciente
 
-        BigDecimal montoDevuelto = original.getMontoAplicado() != null ? original.getMontoAplicado() : BigDecimal.ZERO;
+        // Solo se devuelve en mano lo que entro en mano.
+        //
+        // revertir() ya le ha restituido el saldo que este cobro le consumio. Si ademas se
+        // grabara una devolucion por el importe aplicado, la parte pagada con su propio saldo
+        // contaria dos veces: le vuelve el credito Y los libros dicen que salio plata por el
+        // mostrador. Un cobro de 235 hecho con 45 en efectivo y 190 de su saldo devuelve 45;
+        // los 190 ya estan de vuelta donde estaban.
+        BigDecimal montoDevuelto = original.elEfectivoQueEntro()
+                .min(original.getMontoAplicado() != null ? original.getMontoAplicado() : BigDecimal.ZERO);
+        if (montoDevuelto.compareTo(BigDecimal.ZERO) <= 0) {
+            // No entro efectivo: no hay nada que sacar del cajon. El cobro queda deshecho y el
+            // saldo restituido, que es toda la devolucion posible.
+            return null;
+        }
         BigDecimal saldoActual = BigDecimal.ZERO;
         if (original.getPaciente() != null && original.getPaciente().getId() != null) {
             saldoActual = pacienteRepository.findById(original.getPaciente().getId())
@@ -552,7 +583,11 @@ public class PagoService {
         devolucion.setPaciente(original.getPaciente());
         devolucion.setTratamiento(original.getTratamiento());
         devolucion.setCita(original.getCita());
-        devolucion.setMetodo(original.getMetodo());
+        // Metodo propio "Devolucion", no el del cobro original: una salida no es una entrada, y
+        // al heredar un metodo que cuenta en caja la devolucion se metia en el arqueo del dia
+        // restando de lo cobrado hoy, que es dinero de otro dia. Por donde salio queda en notas.
+        devolucion.setMetodo(metodoDevolucion());
+        devolucion.setTrajoDinero(false);
         devolucion.setMontoRecibido(montoDevuelto);
         devolucion.setMontoAplicado(BigDecimal.ZERO);
         devolucion.setSaldoGenerado(BigDecimal.ZERO);
@@ -560,7 +595,9 @@ public class PagoService {
         devolucion.setEsDevolucion(true);
         devolucion.setPagoOrigenId(original.getId());
         devolucion.setConcepto("Devolución del pago #" + original.getId());
-        devolucion.setNotas("Devolución de dinero por anulación de cita");
+        devolucion.setNotas("Devolución de dinero por anulación de cita — salió por: "
+                + (original.getMetodo() != null && original.getMetodo().getNombre() != null
+                   ? original.getMetodo().getNombre().trim() : "sin método registrado"));
         return repository.save(devolucion);
     }
 
@@ -573,7 +610,9 @@ public class PagoService {
     @Transactional
     public Pago crearDevolucionManual(Paciente paciente, Tratamiento tratamiento, Cita cita,
                                        BigDecimal monto, Long metodoId, String concepto) {
-        CatMetodoPago metodo = metodoId != null ? catMetodoPagoRepository.findById(metodoId).orElse(null) : null;
+        // El metodo que llega dice por DONDE salio el dinero; la fila se graba como "Devolucion"
+        // para que no se confunda con un cobro ni entre en el arqueo del dia.
+        CatMetodoPago porDondeSalio = metodoId != null ? catMetodoPagoRepository.findById(metodoId).orElse(null) : null;
         BigDecimal saldoActual = BigDecimal.ZERO;
         if (paciente != null && paciente.getId() != null) {
             saldoActual = pacienteRepository.findById(paciente.getId())
@@ -585,14 +624,17 @@ public class PagoService {
         devolucion.setPaciente(paciente);
         devolucion.setTratamiento(tratamiento);
         devolucion.setCita(cita);
-        devolucion.setMetodo(metodo);
+        devolucion.setMetodo(metodoDevolucion());
+        devolucion.setTrajoDinero(false);
         devolucion.setMontoRecibido(monto);
         devolucion.setMontoAplicado(BigDecimal.ZERO);
         devolucion.setSaldoGenerado(BigDecimal.ZERO);
         devolucion.setSaldoPrevio(saldoActual);
         devolucion.setEsDevolucion(true);
         devolucion.setConcepto(concepto);
-        devolucion.setNotas(concepto);
+        devolucion.setNotas(concepto + " — salió por: "
+                + (porDondeSalio != null && porDondeSalio.getNombre() != null
+                   ? porDondeSalio.getNombre().trim() : "sin método registrado"));
         return repository.save(devolucion);
     }
 
@@ -618,12 +660,31 @@ public class PagoService {
      * Basta con que UNO de sus pagos haya sido dinero: ahi si hay algo que devolver, y partirlo
      * sesion por sesion seria precision falsa sobre un reparto que el sistema no guarda.
      */
+    /**
+     * El metodo "Devolucion". Esta marcado cuenta_en_caja = false, asi que las devoluciones no
+     * entran en el arqueo del dia — el cierre las lista aparte, con el resto de lo que no es
+     * dinero de hoy.
+     *
+     * Si no estuviera (base sin la migracion), se devuelve null: el pago se graba igual y la
+     * devolucion no se pierde, solo queda sin metodo.
+     */
+    private CatMetodoPago metodoDevolucion() {
+        return catMetodoPagoRepository.findAll().stream()
+                .filter(m -> "DEVOLUCION".equalsIgnoreCase(m.getKey() == null ? "" : m.getKey().trim()))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * Si el paciente puso dinero por este paquete — en efectivo o de su saldo a favor.
+     *
+     * Antes pedia montoRecibido > 0 Y que el metodo contara en caja, asi que un paquete pagado
+     * con el saldo del propio paciente (recibido 0, sin metodo) daba NO por partida doble. Al
+     * anular una sesion de ese paquete no se le devolvia nada.
+     */
     public boolean elPaqueteRecibioDinero(Long tratamientoId) {
         return repository.findByTratamientoId(tratamientoId).stream()
                 .filter(p -> !Boolean.TRUE.equals(p.getEsDevolucion()))
-                .filter(p -> p.getMontoRecibido() != null
-                          && p.getMontoRecibido().compareTo(BigDecimal.ZERO) > 0)
-                .anyMatch(Pago::trajoDineroDeVerdad);
+                .anyMatch(p -> p.loQuePusoElPaciente().compareTo(BigDecimal.ZERO) > 0);
     }
 
     /**
@@ -694,24 +755,26 @@ public class PagoService {
                 });
             }
 
-            // Si el pago se hizo con un metodo que no es dinero en caja ("Sin pago", "Paquete"),
-            // nunca entro un sol: devolverlo como saldo le regala al paciente un credito que
-            // puede gastar contra dinero que no existe. Pasaba de verdad — una cita marcada
-            // pagada con "Sin pago" y luego anulada dejaba S/ 50 a favor de la nada, y dos de
-            // esas, S/ 100. La cita si se deja sin pago; lo que no se crea es el credito.
-            // Lo dice el propio pago, no la configuracion de hoy de su metodo: lo que se
-            // devuelve tiene que medirse con la vara del dia en que entro.
-            boolean elDineroNuncaEntro = !p.trajoDineroDeVerdad();
+            // Se le devuelve lo que PUSO, no lo que vio la caja.
+            //
+            // Un cobro con "Sin pago" o "Paquete" no puso nada: devolverlo como saldo le regalaba
+            // un credito contra dinero que no existe —una cita asi, anulada, dejaba S/ 50 a favor
+            // de la nada, y dos de esas S/ 100—. Eso sigue dando cero.
+            //
+            // Pero la pregunta estaba mal hecha: se medía "¿entro efectivo con este pago?", y un
+            // cobro pagado con el saldo del propio paciente responde que no. Resultado: se le
+            // comia el saldo al cobrar y no se lo devolvia al anular. Lo que cuenta es su aporte:
+            // el efectivo de entonces mas el saldo suyo que se consumio.
+            BigDecimal aDevolver = p.loQuePusoElPaciente().min(montoAplicado);
 
-            if (!elDineroNuncaEntro
-                    && montoAplicado.compareTo(BigDecimal.ZERO) > 0
+            if (aDevolver.compareTo(BigDecimal.ZERO) > 0
                     && p.getPaciente() != null && p.getPaciente().getId() != null) {
                 pacienteRepository.findById(p.getPaciente().getId()).ifPresent(paciente -> {
                     BigDecimal saldo = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
-                    BigDecimal nuevo = saldo.add(montoAplicado);
+                    BigDecimal nuevo = saldo.add(aDevolver);
                     paciente.setSaldoAFavor(nuevo);
                     pacienteRepository.save(paciente);
-                    saldoMovimientoService.registrar(paciente, montoAplicado, nuevo,
+                    saldoMovimientoService.registrar(paciente, aDevolver, nuevo,
                             motivoMovimiento, p.getCita(), p);
                 });
             }

@@ -163,5 +163,55 @@ check "cobrado del paquete" "100.00" "$(q "SELECT total_cobrado::numeric(12,2) F
 check "saldo consumido entero"   "0.00" "$(saldo $P)"
 check "en caja solo entraron 20" "20.00" "$(q "SELECT monto_recibido::numeric(12,2) FROM pagos WHERE tratamiento_id=$PQ3")"
 
+echo "== 14. El saldo solo se gasta si se pide =="
+# El caso de JOSE CARLOS: un cobro de 45 contra un paquete de 235 se llevaba por delante los
+# 190 que el paciente tenia a favor y dejaba todo pagado. Ahora el cobro dice cuanto saldo usa.
+read P T TT ET <<< $(q "SELECT c.paciente_id||' '||c.terapeuta_id||' '||c.tipo_terapia_id||' '||(SELECT id FROM cat_estados_tratamiento LIMIT 1) FROM citas c WHERE c.terapeuta_id IS NOT NULL AND c.tipo_terapia_id IS NOT NULL LIMIT 1")
+nuevoPaq() { # $1 sesiones, $2 precio
+  curl -s -X POST "$API/api/tratamientos" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+    -d "{\"paciente\":{\"id\":$P},\"terapeuta\":{\"id\":$T},\"tipoTerapia\":{\"id\":\"$TT\"},\"nombre\":\"bateria saldo\",\"totalSesiones\":$1,\"precioPorSesion\":$2,\"estado\":{\"id\":$ET},\"fechaInicio\":\"2026-10-07\"}" \
+    | python -c "import sys,json;print(json.load(sys.stdin)['id'])"
+}
+PA=$(nuevoPaq 5 47); ponerSaldo $P 190
+post /api/pagos "{\"paciente\":{\"id\":$P},\"tratamiento\":{\"id\":$PA},\"metodo\":{\"id\":1},\"montoRecibido\":45,\"saldoAAplicar\":0}" >/dev/null
+check "cobrado del paquete (solo los 45)" "45.00"  "$(q "SELECT total_cobrado::numeric(12,2) FROM tratamientos WHERE id=$PA")"
+check "su saldo sigue intacto"            "190.00" "$(saldo $P)"
+# Y pidiendolo, se usa: 190 de saldo sobre 235 dejan 45 de deuda, que es lo que el negocio queria.
+PB=$(nuevoPaq 5 47)
+post /api/pagos "{\"paciente\":{\"id\":$P},\"tratamiento\":{\"id\":$PB},\"montoRecibido\":0,\"saldoAAplicar\":190}" >/dev/null
+check "cobrado con su saldo"   "190.00" "$(q "SELECT total_cobrado::numeric(12,2) FROM tratamientos WHERE id=$PB")"
+check "deuda que queda (235-190)" "45.00" "$(q "SELECT (235 - total_cobrado)::numeric(12,2) FROM tratamientos WHERE id=$PB")"
+check "saldo agotado"          "0.00"   "$(saldo $P)"
+
+echo "== 15. Anular una cita pagada CON SALDO: el saldo vuelve =="
+# Antes no volvia: el filtro preguntaba "¿entro efectivo?" y un pago con saldo responde que no,
+# asi que al paciente se le comia el saldo al cobrar y no se le devolvia al anular.
+read C8 P8 <<< $(nueva_cita 50); ponerSaldo $P8 80
+post /api/pagos "{\"paciente\":{\"id\":$P8},\"cita\":{\"id\":$C8},\"montoRecibido\":0,\"montoAplicado\":50,\"saldoAAplicar\":50}" >/dev/null
+check "saldo tras cobrar con saldo (80-50)" "30.00" "$(saldo $P8)"
+check "la cita queda pagada" "PAGADA" "$(epago $C8)"
+post "/api/citas/$C8/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
+check "saldo tras anular (vuelven los 50)" "80.00" "$(saldo $P8)"
+# Y lo de "Sin pago" sigue sin inventar credito.
+read C9b P9b <<< $(nueva_cita 50); ponerSaldo $P9b 0
+post /api/pagos "{\"paciente\":{\"id\":$P9b},\"cita\":{\"id\":$C9b},\"metodo\":{\"id\":9},\"montoRecibido\":50}" >/dev/null
+post "/api/citas/$C9b/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
+check "'Sin pago' sigue sin generar saldo" "0.00" "$(saldo $P9b)"
+
+echo "== 16. Devolver dinero: ni doble, ni dentro de la caja del dia =="
+# Pago mixto: 20 en efectivo + 30 de su saldo. Al devolver, por el cajon salen 20 — los 30 ya
+# le vuelven como saldo. Antes se grababa una devolucion por los 50 enteros Y se le restituia
+# el saldo: contaba dos veces.
+read CA PA2 <<< $(nueva_cita 50); ponerSaldo $PA2 30
+post /api/pagos "{\"paciente\":{\"id\":$PA2},\"cita\":{\"id\":$CA},\"metodo\":{\"id\":1},\"montoRecibido\":20,\"saldoAAplicar\":30}" >/dev/null
+check "la cita queda pagada" "PAGADA" "$(epago $CA)"
+check "saldo consumido"      "0.00"   "$(saldo $PA2)"
+post "/api/citas/$CA/anular?devolucion=DINERO&motivo=prueba" '{}' >/dev/null
+check "le vuelven sus 30 de saldo"        "30.00" "$(saldo $PA2)"
+check "por el cajon salen solo los 20"    "20.00" "$(q "SELECT COALESCE(sum(monto_recibido),0)::numeric(12,2) FROM pagos WHERE cita_id=$CA AND es_devolucion")"
+check "grabada como Devolución"           "Devolución" "$(q "SELECT m.nombre FROM pagos p JOIN cat_metodos_pago m ON m.id=p.metodo_id WHERE p.cita_id=$CA AND p.es_devolucion")"
+check "dice por donde salio"              "1" "$(q "SELECT count(*) FROM pagos WHERE cita_id=$CA AND es_devolucion AND notas ILIKE '%Efectivo%'")"
+check "fuera del arqueo del dia"          "false" "$(q "SELECT trajo_dinero::text FROM pagos WHERE cita_id=$CA AND es_devolucion")"
+
 echo
 echo "RESULTADO: $OK correctos, $KO fallos"
