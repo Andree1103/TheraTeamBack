@@ -14,7 +14,19 @@ public class CatMetodoPagoService {
 
     private final CatMetodoPagoRepository repository;
 
-    public List<CatMetodoPago> findAll() { return repository.findAll(); }
+    /**
+     * Los metodos que se pueden ELEGIR al cobrar. "Devolución" no es uno de ellos.
+     *
+     * Existe como metodo para que las devoluciones queden nombradas y fuera del arqueo, pero lo
+     * pone el sistema al anular, no una persona desde el desplegable: elegirlo a mano grabaria
+     * un cobro que dice ser una salida. Nada mas crearlo aparecio en el selector de "Registrar
+     * pago", al lado de Efectivo.
+     */
+    public List<CatMetodoPago> findAll() {
+        return repository.findAll().stream()
+                .filter(m -> !"DEVOLUCION".equalsIgnoreCase(m.getKey() == null ? "" : m.getKey().trim()))
+                .toList();
+    }
 
     public Optional<CatMetodoPago> findById(Long id) { return repository.findById(id); }
 
