@@ -37,6 +37,24 @@ public class Pago {
     private CatMetodoPago metodo;
 
     /**
+     * Si este cobro movio dinero de verdad. Se fija al crearlo y NO cambia.
+     *
+     * Antes la pregunta se le hacia al metodo: cat_metodos_pago.cuenta_en_caja. Eso es un dato
+     * de HOY aplicado al PASADO — si alguien marca manana "Efectivo" como que no cuenta, todos
+     * los arqueos y todas las reversiones de meses anteriores cambian de significado en
+     * silencio. El arqueo y las reversiones leen esto; el catalogo solo decide el valor inicial
+     * de los pagos nuevos.
+     */
+    @Column(name = "trajo_dinero")
+    private Boolean trajoDinero;
+
+    /** Ante un nulo (fila anterior a la migracion) manda el metodo, como se hacia antes. */
+    public boolean trajoDineroDeVerdad() {
+        if (trajoDinero != null) return trajoDinero;
+        return metodo != null && metodo.cuentaEnCajaOEsDinero();
+    }
+
+    /**
      * El dinero no entra manana.
      *
      * "Fecha de pago" se puede escribir a mano —hace falta, para registrar un cobro de ayer que
@@ -109,6 +127,8 @@ public class Pago {
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now();
+        // Se congela aqui: el metodo decide, pero solo en este momento.
+        if (trajoDinero == null) trajoDinero = metodo == null ? false : metodo.cuentaEnCajaOEsDinero();
         if (fechaPago == null) fechaPago = LocalDateTime.now();
         if (saldoGenerado == null) saldoGenerado = BigDecimal.ZERO;
         if (saldoPrevio == null) saldoPrevio = BigDecimal.ZERO;
