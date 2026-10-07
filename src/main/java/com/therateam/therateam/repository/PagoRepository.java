@@ -27,7 +27,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         FROM Pago pg
         LEFT JOIN pg.metodo m
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
-          AND (m IS NULL OR m.cuentaEnCaja IS NULL OR m.cuentaEnCaja = true)
+          AND pg.trajoDinero = true
         GROUP BY m.id, m.nombre
         HAVING SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END) <> 0
         """)
@@ -45,10 +45,11 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT m.id, m.nombre,
                SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END)
         FROM Pago pg
-        JOIN pg.metodo m
+        LEFT JOIN pg.metodo m
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
-          AND m.cuentaEnCaja = false
+          AND pg.trajoDinero = false
         GROUP BY m.id, m.nombre
+        HAVING SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END) <> 0
         """)
     List<Object[]> sumFueraDeCajaEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
                                               @Param("finDia") LocalDateTime finDia);
@@ -67,7 +68,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
         FROM Pago pg
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
-          AND (pg.metodo IS NULL OR pg.metodo.cuentaEnCaja IS NULL OR pg.metodo.cuentaEnCaja = true)
+          AND pg.trajoDinero = true
           AND pg.esAdicional = false
         """)
     BigDecimal sumTerapiasEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
@@ -78,7 +79,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
         FROM Pago pg
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
-          AND (pg.metodo IS NULL OR pg.metodo.cuentaEnCaja IS NULL OR pg.metodo.cuentaEnCaja = true)
+          AND pg.trajoDinero = true
           AND EXISTS (SELECT 1 FROM VentaItem vi WHERE vi.pagoId = pg.id)
         """)
     BigDecimal sumProductosEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
@@ -89,7 +90,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         SELECT COALESCE(SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END), 0)
         FROM Pago pg
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
-          AND (pg.metodo IS NULL OR pg.metodo.cuentaEnCaja IS NULL OR pg.metodo.cuentaEnCaja = true)
+          AND pg.trajoDinero = true
           AND pg.esAdicional = true
           AND NOT EXISTS (SELECT 1 FROM VentaItem vi WHERE vi.pagoId = pg.id)
         """)
@@ -113,7 +114,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         LEFT JOIN pg.paciente pac
         LEFT JOIN pg.metodo m
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
-          AND (m IS NULL OR m.cuentaEnCaja IS NULL OR m.cuentaEnCaja = true)
+          AND pg.trajoDinero = true
           AND pg.esAdicional = true
           AND NOT EXISTS (SELECT 1 FROM VentaItem vi WHERE vi.pagoId = pg.id)
         ORDER BY pg.fechaPago

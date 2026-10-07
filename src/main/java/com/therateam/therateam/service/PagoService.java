@@ -75,6 +75,21 @@ public class PagoService {
         Paciente paciente = pacienteRepository.findById(p.getPaciente().getId())
                 .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado"));
 
+        // Se fija aqui si este cobro trae dinero, con el metodo CARGADO de la base.
+        //
+        // No vale hacerlo en @PrePersist: ahi `metodo` es todavia el cascaron que deserializo
+        // Jackson desde {"metodo":{"id":9}}, con cuentaEnCaja a null — y un null se lee como
+        // "si es dinero". Resultado: un cobro con el metodo "Sin pago" se grababa como si
+        // hubiera entrado plata, y al anular la cita devolvia ese dinero inventado al saldo.
+        // Lo cazo la bateria (caso 6) y por eso existe ese caso.
+        if (p.getMetodo() != null && p.getMetodo().getId() != null) {
+            p.setTrajoDinero(catMetodoPagoRepository.findById(p.getMetodo().getId())
+                    .map(CatMetodoPago::cuentaEnCajaOEsDinero)
+                    .orElse(true));
+        } else {
+            p.setTrajoDinero(false);   // sin metodo = salio del saldo a favor, no entro nada
+        }
+
         // Cobro adicional (ej. "se atendió y se le vendió algo más"): es ingreso aparte, no paga
         // ninguna deuda de cita/paquete ni genera saldo a favor — se registra tal cual se cobró.
         // Es también la vía de la venta de productos: si vienen items, el monto y el concepto
@@ -584,7 +599,7 @@ public class PagoService {
                 .filter(p -> !Boolean.TRUE.equals(p.getEsDevolucion()))
                 .filter(p -> p.getMontoRecibido() != null
                           && p.getMontoRecibido().compareTo(BigDecimal.ZERO) > 0)
-                .anyMatch(p -> p.getMetodo() == null || p.getMetodo().cuentaEnCajaOEsDinero());
+                .anyMatch(Pago::trajoDineroDeVerdad);
     }
 
     /**
@@ -660,7 +675,9 @@ public class PagoService {
             // puede gastar contra dinero que no existe. Pasaba de verdad — una cita marcada
             // pagada con "Sin pago" y luego anulada dejaba S/ 50 a favor de la nada, y dos de
             // esas, S/ 100. La cita si se deja sin pago; lo que no se crea es el credito.
-            boolean elDineroNuncaEntro = p.getMetodo() != null && !p.getMetodo().cuentaEnCajaOEsDinero();
+            // Lo dice el propio pago, no la configuracion de hoy de su metodo: lo que se
+            // devuelve tiene que medirse con la vara del dia en que entro.
+            boolean elDineroNuncaEntro = !p.trajoDineroDeVerdad();
 
             if (!elDineroNuncaEntro
                     && montoAplicado.compareTo(BigDecimal.ZERO) > 0
