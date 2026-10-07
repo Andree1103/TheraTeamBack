@@ -107,3 +107,80 @@ SELECT
   (SELECT COALESCE(sum(saldo_a_favor),0) FROM pacientes) AS en_saldos_a_favor,
   (SELECT COALESCE(sum(monto_pagado),0) FROM citas WHERE eliminado=false) AS cubriendo_citas,
   (SELECT COALESCE(sum(total_cobrado),0) FROM tratamientos) AS cubriendo_paquetes;
+
+-- ── Segunda tanda (K..T): los caminos que la primera no miraba ──────────────────────────
+-- Devoluciones por encima de lo cobrado, pagos duplicados, ventas de producto y su stock,
+-- cobros adicionales sin concepto, reprogramaciones que dupliquen dinero, cierres de caja
+-- contra lo que suman sus pagos, el reparto dentro de un paquete, adelantos sin movimiento
+-- de saldo, y citas dadas por pagadas sin importe.
+--
+-- Ojo con L: dos pagos iguales a la misma cita no son necesariamente un duplicado — pueden
+-- ser dos cuotas. Hay que mirar la hora y el medio antes de concluir.
+
+\echo '=== K. Devoluciones que devuelven MAS de lo que se cobro por esa cita ==='
+SELECT count(*) AS devoluciones_excesivas FROM (
+  SELECT c.id,
+    COALESCE(sum(CASE WHEN pg.es_devolucion THEN pg.monto_recibido ELSE 0 END),0) AS devuelto,
+    COALESCE(sum(CASE WHEN NOT COALESCE(pg.es_devolucion,false) THEN pg.monto_recibido ELSE 0 END),0) AS cobrado
+  FROM citas c JOIN pagos pg ON pg.cita_id=c.id GROUP BY c.id) x
+WHERE devuelto > cobrado + 0.01;
+
+\echo ''
+\echo '=== L. Pagos duplicados: mismo paciente, misma cita, mismo importe, en menos de 1 min ==='
+SELECT count(*) AS posibles_duplicados FROM (
+  SELECT p.id, lag(p.id) OVER w AS anterior
+  FROM pagos p WHERE p.cita_id IS NOT NULL AND NOT COALESCE(p.es_devolucion,false)
+  WINDOW w AS (PARTITION BY p.paciente_id, p.cita_id, p.monto_recibido ORDER BY p.fecha_pago)
+) x WHERE anterior IS NOT NULL;
+
+\echo ''
+\echo '=== M. Ventas de producto sin pago detras, o pagos de venta sin lineas ==='
+SELECT (SELECT count(*) FROM venta_items vi WHERE NOT EXISTS (SELECT 1 FROM pagos p WHERE p.id=vi.pago_id)) AS lineas_sin_pago,
+       (SELECT count(*) FROM pagos p WHERE COALESCE(p.es_adicional,false)
+          AND EXISTS (SELECT 1 FROM venta_items vi WHERE vi.pago_id=p.id)
+          AND p.monto_recibido <> COALESCE((SELECT sum(vi.subtotal) FROM venta_items vi WHERE vi.pago_id=p.id),0)) AS venta_con_importe_distinto;
+
+\echo ''
+\echo '=== N. Cobros adicionales sin concepto (no se sabe de que son) ==='
+SELECT count(*) AS adicionales_sin_concepto FROM pagos
+WHERE COALESCE(es_adicional,false) AND COALESCE(NULLIF(btrim(COALESCE(concepto,'')),''), NULLIF(btrim(COALESCE(notas,'')),'')) IS NULL;
+
+\echo ''
+\echo '=== O. Reprogramaciones: ¿quedo dinero en la cita vieja Y en la nueva? ==='
+SELECT count(*) AS dinero_duplicado_al_reprogramar FROM citas vieja
+JOIN citas nueva ON nueva.reprogramacion_de = vieja.id
+WHERE COALESCE(vieja.monto_pagado,0) > 0 AND COALESCE(nueva.monto_pagado,0) > 0;
+
+\echo ''
+\echo '=== P. Cierres de caja: lo guardado vs lo que suman los pagos de ese turno ==='
+SELECT count(*) AS cierres_descuadrados FROM cierres_caja cc
+WHERE abs(COALESCE(cc.total_ingresos,0) - COALESCE((
+  SELECT sum(CASE WHEN p.es_devolucion THEN -p.monto_recibido ELSE p.monto_recibido END)
+  FROM pagos p LEFT JOIN cat_metodos_pago m ON m.id=p.metodo_id
+  WHERE (m.cuenta_en_caja IS NULL OR m.cuenta_en_caja)
+    AND p.fecha_pago >= (CASE WHEN cc.turno=1 THEN cc.fecha::timestamp ELSE cc.fecha + time '13:00' END)
+    AND p.fecha_pago <  (CASE WHEN cc.turno=1 THEN cc.fecha + time '13:00' ELSE (cc.fecha+1)::timestamp END)),0)) > 0.01;
+
+\echo ''
+\echo '=== Q. Sesiones de paquete: lo repartido vs lo cobrado del paquete ==='
+SELECT count(*) AS paquetes_con_reparto_descuadrado FROM tratamientos t
+WHERE abs(COALESCE(t.total_cobrado,0) - COALESCE((
+  SELECT sum(COALESCE(c.monto_pagado,0)) FROM sesiones s JOIN citas c ON c.sesion_id=s.id
+  WHERE s.tratamiento_id=t.id AND c.eliminado=false),0)) > 0.01;
+
+\echo ''
+\echo '=== R. Adelantos (pagos sin cita ni paquete) sin movimiento de saldo que los acompañe ==='
+SELECT count(*) AS adelantos_sin_movimiento FROM pagos p
+WHERE p.cita_id IS NULL AND p.tratamiento_id IS NULL AND NOT COALESCE(p.es_devolucion,false)
+  AND NOT COALESCE(p.es_adicional,false) AND p.monto_recibido > 0
+  AND NOT EXISTS (SELECT 1 FROM saldo_movimientos m WHERE m.pago_id = p.id);
+
+\echo ''
+\echo '=== S. Citas PAGADA con precio 0 (cobradas sin importe) ==='
+SELECT count(*) AS pagadas_sin_precio FROM citas c
+JOIN cat_estados_pago_cita ep ON ep.id=c.estado_pago_id
+WHERE ep.key='PAGADA' AND COALESCE(c.precio,0) <= 0 AND c.eliminado=false;
+
+\echo ''
+\echo '=== T. Stock negativo en productos ==='
+SELECT count(*) AS productos_con_stock_negativo FROM productos WHERE COALESCE(stock,0) < 0;
