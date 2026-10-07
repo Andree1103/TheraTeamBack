@@ -117,5 +117,51 @@ check "paquete con sesion atendida se niega" "400" "$(borrar $PQ)"; limpiar $PQ
 PQ=$(nuevoPaquete); conSesiones $PQ PROGRAMADA PARCIAL 30
 check "paquete con dinero cobrado se niega" "400" "$(borrar $PQ)"; limpiar $PQ
 
+# Los dos de abajo reproducen lo que manda el FRONT, no lo que seria comodo mandar. El fallo que
+# reporto el cliente no estaba en el motor del dinero —que siempre supo gastar el saldo— sino en
+# que estas dos pantallas cobraban el importe completo sin mirarlo. Asi que lo que se comprueba
+# aqui es la peticion tal cual sale de ellas.
+
+echo "== 12. Pagar sesiones marcadas: el saldo cubre las que alcanza, el resto por su metodo =="
+# Tres sesiones de 50 y un saldo de 120: cubre dos enteras (100) y la tercera se cobra aparte.
+# Nunca media sesion: pagar 20 de una dejaria una cita PARCIAL que nadie pidio.
+read P T TT ET <<< $(q "SELECT c.paciente_id||' '||c.terapeuta_id||' '||c.tipo_terapia_id||' '||(SELECT id FROM cat_estados_tratamiento LIMIT 1) FROM citas c WHERE c.terapeuta_id IS NOT NULL AND c.tipo_terapia_id IS NOT NULL LIMIT 1")
+PQ2=$(curl -s -X POST "$API/api/tratamientos" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+      -d "{\"paciente\":{\"id\":$P},\"terapeuta\":{\"id\":$T},\"tipoTerapia\":{\"id\":\"$TT\"},\"nombre\":\"bateria sesiones\",\"totalSesiones\":3,\"precioPorSesion\":50,\"estado\":{\"id\":$ET},\"fechaInicio\":\"2026-10-06\"}" \
+      | python -c "import sys,json;print(json.load(sys.stdin)['id'])")
+x "INSERT INTO sesiones (tratamiento_id, numero, estado_id, created_at, updated_at) SELECT $PQ2, g, (SELECT id FROM cat_estados_sesion LIMIT 1), now(), now() FROM generate_series(1,3) g;
+   INSERT INTO citas (paciente_id, terapeuta_id, tipo_terapia_id, sesion_id, fecha_inicio, fecha_fin, duracion_minutos, estado_id, modalidad_id, estado_pago_id, precio, monto_pagado, eliminado, created_at, updated_at, recordatorio_enviado)
+   SELECT t.paciente_id, t.terapeuta_id, t.tipo_terapia_id, s.id, '2026-11-03 09:00', '2026-11-03 09:40', 40, (SELECT id FROM cat_estados_cita WHERE key='PROGRAMADA'), (SELECT id FROM cat_modalidades LIMIT 1), (SELECT id FROM cat_estados_pago_cita WHERE key='SIN_PAGO'), 50, 0, false, now(), now(), false
+   FROM sesiones s JOIN tratamientos t ON t.id=s.tratamiento_id WHERE s.tratamiento_id=$PQ2;
+   UPDATE sesiones s SET cita_activa_id = (SELECT c.id FROM citas c WHERE c.sesion_id=s.id) WHERE s.tratamiento_id=$PQ2;"
+read S1 S2 S3 <<< $(q "SELECT string_agg(c.id::text,' ' ORDER BY s.numero) FROM sesiones s JOIN citas c ON c.sesion_id=s.id WHERE s.tratamiento_id=$PQ2")
+ponerSaldo $P 120
+# Cada pago va dirigido a UNA cita, igual que el front: montoRecibido 0 y sin metodo cuando lo
+# cubre el saldo. Si el motor cobrara contra la deuda del paquete en vez de la de la sesion, el
+# primer pago se tragaria los 120 y la cita, topada en 50, dejaria 70 en el aire.
+post /api/pagos "{\"paciente\":{\"id\":$P},\"tratamiento\":{\"id\":$PQ2},\"cita\":{\"id\":$S1},\"montoRecibido\":0}" >/dev/null
+post /api/pagos "{\"paciente\":{\"id\":$P},\"tratamiento\":{\"id\":$PQ2},\"cita\":{\"id\":$S2},\"montoRecibido\":0}" >/dev/null
+check "saldo tras cubrir 2 de 3 (120-100)" "20.00" "$(saldo $P)"
+check "la 1ra sesion queda pagada" "PAGADA" "$(epago $S1)"
+check "la 2da sesion queda pagada" "PAGADA" "$(epago $S2)"
+check "la 3ra sigue sin pagar"     "SIN_PAGO" "$(epago $S3)"
+# La tercera en Yape: entra dinero de verdad, asi que lleva metodo.
+post /api/pagos "{\"paciente\":{\"id\":$P},\"tratamiento\":{\"id\":$PQ2},\"cita\":{\"id\":$S3},\"metodo\":{\"id\":1},\"montoRecibido\":50}" >/dev/null
+check "cobrado del paquete (3x50)" "150.00" "$(q "SELECT total_cobrado::numeric(12,2) FROM tratamientos WHERE id=$PQ2")"
+check "nada se quedo en el aire"   "150.00" "$(q "SELECT COALESCE(sum(c.monto_pagado),0)::numeric(12,2) FROM sesiones s JOIN citas c ON c.sesion_id=s.id WHERE s.tratamiento_id=$PQ2")"
+check "el saldo no se toco al cobrar la tercera" "20.00" "$(saldo $P)"
+check "solo 1 de los 3 pagos trajo dinero" "1" "$(q "SELECT count(*) FROM pagos WHERE tratamiento_id=$PQ2 AND trajo_dinero")"
+
+echo "== 13. Pago inicial del paquete: descuenta del saldo y solo pide la diferencia =="
+ponerSaldo $P 80
+PQ3=$(curl -s -X POST "$API/api/tratamientos" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+      -d "{\"paciente\":{\"id\":$P},\"terapeuta\":{\"id\":$T},\"tipoTerapia\":{\"id\":\"$TT\"},\"nombre\":\"bateria inicial\",\"totalSesiones\":2,\"precioPorSesion\":50,\"estado\":{\"id\":$ET},\"fechaInicio\":\"2026-10-06\"}" \
+      | python -c "import sys,json;print(json.load(sys.stdin)['id'])")
+# Pago inicial de 100 con 80 de saldo: el front manda 20 en efectivo, no 100.
+post /api/pagos "{\"paciente\":{\"id\":$P},\"tratamiento\":{\"id\":$PQ3},\"metodo\":{\"id\":1},\"montoRecibido\":20,\"montoAplicado\":100,\"saldoPrevio\":80}" >/dev/null
+check "cobrado del paquete" "100.00" "$(q "SELECT total_cobrado::numeric(12,2) FROM tratamientos WHERE id=$PQ3")"
+check "saldo consumido entero"   "0.00" "$(saldo $P)"
+check "en caja solo entraron 20" "20.00" "$(q "SELECT monto_recibido::numeric(12,2) FROM pagos WHERE tratamiento_id=$PQ3")"
+
 echo
 echo "RESULTADO: $OK correctos, $KO fallos"

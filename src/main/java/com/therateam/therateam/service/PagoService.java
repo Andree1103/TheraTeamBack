@@ -191,6 +191,30 @@ public class PagoService {
             BigDecimal montoTotal   = precioReferencia.multiply(BigDecimal.valueOf(totalSesiones));
             BigDecimal totalCobrado = tratamiento.getTotalCobrado() != null ? tratamiento.getTotalCobrado() : BigDecimal.ZERO;
             deudaPendiente = montoTotal.subtract(totalCobrado).max(BigDecimal.ZERO);
+
+            // Si el pago apunta a UNA sesion, la deuda a cubrir es la de esa sesion, no la del
+            // paquete entero.
+            //
+            // Sin esto el dinero se evaporaba: con un paquete de 3x50 y un saldo de 120, pagar la
+            // primera sesion aplicaba 120 (la deuda del paquete, 150, daba de sobra), y abajo
+            // aplicarMontoACita topa la cita en su precio — la cita se quedaba con 50 y los otros
+            // 70 no llegaban a ninguna sesion, pero total_cobrado SI subia 120. El paquete decia
+            // tener cobrado mas de lo que sus sesiones mostraban, y esa diferencia no estaba en
+            // ningun sitio: ni en una cita, ni en el saldo del paciente.
+            //
+            // Ahora el excedente se queda a favor del paciente, que es donde se puede volver a
+            // usar. En produccion nunca llego a pasar (cero paquetes descuadrados en el volcado
+            // del 06/10) porque hacia falta saldo o un cobro de mas en esa pantalla; se tapa
+            // porque pagar sesiones marcadas con el saldo ya es un camino normal.
+            if (citaAsociada != null) {
+                BigDecimal precioDeLaCita = citaAsociada.getPrecio() != null
+                        && citaAsociada.getPrecio().compareTo(BigDecimal.ZERO) > 0
+                        ? citaAsociada.getPrecio() : precioReferencia;
+                BigDecimal yaPagadoDeLaCita = citaAsociada.getMontoPagado() != null
+                        ? citaAsociada.getMontoPagado() : BigDecimal.ZERO;
+                deudaPendiente = deudaPendiente.min(
+                        precioDeLaCita.subtract(yaPagadoDeLaCita).max(BigDecimal.ZERO));
+            }
             resueltoPorAdelanto = true;
         } else if (citaConPrecioDeReferencia) {
             BigDecimal montoPagadoActual = citaAsociada.getMontoPagado() != null ? citaAsociada.getMontoPagado() : BigDecimal.ZERO;
