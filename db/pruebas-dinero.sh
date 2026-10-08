@@ -3,8 +3,12 @@
 API=http://localhost:8081
 PG="/c/Program Files/PostgreSQL/18/bin/psql.exe"
 export PGPASSWORD=a1n2d3r4e5e6 PGCLIENTENCODING=UTF8
-q() { "$PG" -t -A -h localhost -U postgres -d BDClinicaMONEY -c "$1"; }
-x() { "$PG" -q -h localhost -U postgres -d BDClinicaMONEY -c "$1" >/dev/null; }
+# Contra que copia se corre. Se cambia sin tocar el archivo:
+#   BD=BDClinicaLOQUESEA bash db/pruebas-dinero.sh
+# Nunca contra produccion: la bateria cobra, anula y borra de verdad.
+BD="${BD:-BDClinicaHOY7}"
+q() { "$PG" -t -A -h localhost -U postgres -d "$BD" -c "$1"; }
+x() { "$PG" -q -h localhost -U postgres -d "$BD" -c "$1" >/dev/null; }
 TOK=$(curl -s -X POST $API/api/auth/login -H "Content-Type: application/json" \
       -d '{"email":"jace@whitecode.com.pe","password":"therateam2026"}' | python -c "import sys,json;print(json.load(sys.stdin)['token'])")
 post() { curl -s -o /dev/null -w "%{http_code}" -X POST "$API$1" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" -d "$2"; }
