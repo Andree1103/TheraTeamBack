@@ -60,3 +60,21 @@ SELECT count(*) AS devoluciones,
                           AND NOT EXISTS (SELECT 1 FROM asientos a WHERE a.tipo = 'ANULACION'
                               AND a.pago_id = (substring(COALESCE(p.concepto,'') from '#([0-9]+)'))::bigint)) AS SIN_CUBRIR
   FROM pagos p WHERE COALESCE(p.es_devolucion,false);
+
+\echo ''
+\echo '== 7. Los ultimos asientos. Si el mas nuevo sigue siendo del relleno, los caminos'
+\echo '   vivos no han escrito todavia — normal mientras nadie cobre, sospechoso si ya se cobro.'
+SELECT a.id, a.tipo, a.created_at::timestamp(0) AS escrito, a.pago_id, left(a.nota, 40) AS nota
+  FROM asientos a ORDER BY a.id DESC LIMIT 6;
+
+\echo ''
+\echo '== 8. Pagos registrados DESPUES del relleno y si cada uno dejo su asiento'
+\echo '   Ojo: una DEVOLUCION sale aqui con tiene_asiento = f y es correcto — el suyo es el'
+\echo '   reverso del cobro original y cuelga de ese otro pago. Mira la columna es_devolucion.'
+SELECT p.id, p.fecha_pago::timestamp(0), p.monto_recibido,
+       COALESCE(p.es_devolucion,false) AS es_devolucion,
+       EXISTS (SELECT 1 FROM asientos a WHERE a.pago_id = p.id) AS tiene_asiento
+  FROM pagos p
+ WHERE p.id > (SELECT COALESCE(max(pago_id), 0) FROM asientos WHERE nota LIKE 'Traido%' OR nota LIKE 'Tra%do%')
+ ORDER BY p.id DESC LIMIT 10;
+
