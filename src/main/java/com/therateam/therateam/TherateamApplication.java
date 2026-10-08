@@ -2,10 +2,14 @@ package com.therateam.therateam;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.TimeZone;
 
 @SpringBootApplication
+// Para la revision nocturna del libro (VigilanteDelLibroService). Es la unica tarea programada
+// que hay; si algun dia se añaden mas, que sea con su hora dicha y su motivo escrito.
+@EnableScheduling
 public class TherateamApplication {
 
 	public static void main(String[] args) {
