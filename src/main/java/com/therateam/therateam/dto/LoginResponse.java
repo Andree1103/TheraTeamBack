@@ -23,4 +23,6 @@ public class LoginResponse {
     private boolean puedeExportar;
     /** Viene del ROL: si es false, el front no muestra el boton "Corregir" en Atenciones. */
     private boolean puedeCorregirAtencion;
+    /** Viene del ROL: si es false, la pantalla de Caja no muestra el saldo inicial. */
+    private boolean puedeVerSaldoInicial;
 }

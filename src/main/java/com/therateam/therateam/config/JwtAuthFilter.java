@@ -84,6 +84,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PUEDE_CORREGIR_ATENCION"));
                 }
 
+                // Y quien ve el saldo inicial de la caja, que es el acumulado del negocio.
+                Boolean veSaldoInicial = claims.get("puedeVerSaldoInicial", Boolean.class);
+                if (Boolean.TRUE.equals(veSaldoInicial)) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_VER_SALDO_INICIAL"));
+                }
+
                 var authentication = new UsernamePasswordAuthenticationToken(
                         claims.getSubject(), null, authorities);
                 // Los claims completos (terapeutaId, citasSoloPropias, etc.) quedan disponibles para

@@ -20,6 +20,19 @@ public class CajaController {
 
     private final CajaService service;
 
+    /**
+     * GET /api/caja/resumen-rango?desde=2026-10-01&hasta=2026-10-07
+     *
+     * Para exportar varios dias de una vez. Devuelve un resumen por dia y turno, saltandose los
+     * turnos sin movimiento.
+     */
+    @GetMapping("/resumen-rango")
+    public java.util.List<CajaResumenDTO> resumenRango(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+        return service.resumenRango(desde, hasta);
+    }
+
     /** GET /api/caja/resumen?fecha=2026-07-21&turno=1 */
     @GetMapping("/resumen")
     public CajaResumenDTO resumen(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,

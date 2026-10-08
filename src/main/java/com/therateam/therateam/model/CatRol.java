@@ -34,6 +34,16 @@ public class CatRol {
     private Boolean puedeCorregirAtencion;
 
     /**
+     * Si el rol ve el saldo inicial en la pantalla de Caja.
+     *
+     * Es el unico numero de esa pantalla que arrastra lo acumulado de dias anteriores, o sea
+     * cuanto dinero hay en total. Quien cierra un turno necesita ver lo de SU turno; el
+     * acumulado del negocio es otra cosa.
+     */
+    @Column(name = "puede_ver_saldo_inicial")
+    private Boolean puedeVerSaldoInicial;
+
+    /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
      * lectura/navegación; crear/editar/eliminar son flags independientes (las lecturas de datos
      * de referencia cross-módulo siguen abiertas a cualquier autenticado, ver SecurityConfig).

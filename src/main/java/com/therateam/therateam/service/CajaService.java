@@ -64,6 +64,41 @@ public class CajaService {
         return horaHHmm;
     }
 
+    /**
+     * Los dos turnos de cada dia del rango, para exportar varios dias de una vez.
+     *
+     * Reaprovecha resumenDia en lugar de montar una consulta nueva: el reparto por concepto,
+     * por metodo y por producto ya esta resuelto y probado ahi, y duplicarlo en SQL para el
+     * export seria la manera de que un dia las dos vistas dejaran de coincidir.
+     *
+     * El tope de 92 dias no es por rendimiento —son dos consultas ligeras por dia— sino para
+     * que un rango tecleado mal (2020 a 2026) no se lleve por delante el servidor.
+     */
+    @Transactional(readOnly = true)
+    public List<CajaResumenDTO> resumenRango(LocalDate desde, LocalDate hasta) {
+        if (desde == null || hasta == null) {
+            throw new IllegalArgumentException("Indica la fecha de inicio y la de fin.");
+        }
+        if (hasta.isBefore(desde)) {
+            throw new IllegalArgumentException("La fecha de fin no puede ser anterior a la de inicio.");
+        }
+        if (desde.plusDays(92).isBefore(hasta)) {
+            throw new IllegalArgumentException("El rango no puede pasar de 92 dias.");
+        }
+        List<CajaResumenDTO> resultado = new java.util.ArrayList<>();
+        for (LocalDate d = desde; !d.isAfter(hasta); d = d.plusDays(1)) {
+            for (int turno : new int[] { 1, 2 }) {
+                CajaResumenDTO r = resumenDia(d, turno);
+                // Los turnos sin un solo ingreso no se mandan: en un rango de un mes serian la
+                // mitad de las filas, todas a cero, y el Excel se lee peor.
+                boolean vacio = (r.getIngresosPorMetodo() == null || r.getIngresosPorMetodo().isEmpty())
+                             && (r.getIngresosFueraDeCaja() == null || r.getIngresosFueraDeCaja().isEmpty());
+                if (!vacio) resultado.add(r);
+            }
+        }
+        return resultado;
+    }
+
     @Transactional(readOnly = true)
     public CajaResumenDTO resumenDia(LocalDate fecha, Integer turnoParam) {
         int turno = (turnoParam != null && turnoParam == 2) ? 2 : 1;
