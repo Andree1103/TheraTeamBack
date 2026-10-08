@@ -42,6 +42,7 @@ public class CitaService {
     private final CatMetodoPagoRepository catMetodoPagoRepository;
     private final DisponibilidadService disponibilidadService;
     private final PagoService pagoService;
+    private final LibroService libro;
     private final SaldoMovimientoService saldoMovimientoService;
     private final com.therateam.therateam.repository.CitaHistorialRepository citaHistorialRepository;
 
@@ -572,11 +573,20 @@ public class CitaService {
                     String numeroSesion = cita.getSesion().getNumero() != null ? " #" + cita.getSesion().getNumero() : "";
                     pagoService.crearDevolucionManual(cita.getPaciente(), tratamiento, cita, montoDeEstaSesion, metodoResuelto,
                             "Devolución por " + porQue + " de sesión" + numeroSesion + " del paquete " + tratamiento.getNombre());
-                } else if (pagoService.elPaqueteRecibioDinero(tratamiento.getId())) {
+                } else {
                     String numeroSesion = cita.getSesion().getNumero() != null ? " #" + cita.getSesion().getNumero() : "";
-                    sumarSaldoAFavor(cita.getPaciente(), montoDeEstaSesion,
-                            capitalizar(porQue) + " de sesión" + numeroSesion
-                            + " del paquete " + tratamiento.getNombre(), cita);
+                    String motivo = capitalizar(porQue) + " de sesión" + numeroSesion
+                            + " del paquete " + tratamiento.getNombre();
+                    // Al paquete le entró dinero (en efectivo o del saldo del propio paciente):
+                    // esta sesión le vuelve a favor. Si no, no se crea crédito de la nada.
+                    boolean loPagoElPaciente = pagoService.elPaqueteRecibioDinero(tratamiento.getId());
+                    if (loPagoElPaciente) {
+                        sumarSaldoAFavor(cita.getPaciente(), montoDeEstaSesion, motivo, cita);
+                    }
+                    libro.anulacionAFavor(cita.getPaciente() != null ? cita.getPaciente().getId() : null,
+                            null, montoDeEstaSesion,
+                            loPagoElPaciente ? montoDeEstaSesion : java.math.BigDecimal.ZERO,
+                            cita.getId(), tratamiento.getId(), motivo);
                 }
                 // Si al paquete nunca entro dinero (se "cobro" con "Sin pago" o "Paquete"), la
                 // sesion se deja sin pago igual pero NO se genera saldo: devolver algo que no

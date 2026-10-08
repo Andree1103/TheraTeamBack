@@ -213,5 +213,31 @@ check "grabada como Devolución"           "Devolución" "$(q "SELECT m.nombre F
 check "dice por donde salio"              "1" "$(q "SELECT count(*) FROM pagos WHERE cita_id=$CA AND es_devolucion AND notas ILIKE '%Efectivo%'")"
 check "fuera del arqueo del dia"          "false" "$(q "SELECT trajo_dinero::text FROM pagos WHERE cita_id=$CA AND es_devolucion")"
 
+echo "== 17. Cobro mixto anulado QUEDANDO a favor: todo pasa a saldo, la caja no se mueve =="
+# El espejo del caso 16. Mismo cobro —20 por Yape y 30 de su saldo— pero sin sacar dinero: los
+# 50 enteros se le quedan a favor. Los 30 vuelven de donde salieron y los 20 que ya habia
+# entregado se le quedan como credito en vez de devolverselos en mano.
+read CB PB <<< $(nueva_cita 50); ponerSaldo $PB 30
+post /api/pagos "{\"paciente\":{\"id\":$PB},\"cita\":{\"id\":$CB},\"metodo\":{\"id\":1},\"montoRecibido\":20,\"saldoAAplicar\":30}" >/dev/null
+check "la cita queda pagada" "PAGADA" "$(epago $CB)"
+check "saldo consumido"      "0.00"   "$(saldo $PB)"
+post "/api/citas/$CB/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
+check "los 50 enteros quedan a favor" "50.00" "$(saldo $PB)"
+check "no sale nada del cajon"        "0"     "$(q "SELECT count(*) FROM pagos WHERE cita_id=$CB AND es_devolucion")"
+check "la cita vuelve a sin pago"     "SIN_PAGO" "$(epago $CB)"
+
+echo "== 18. Borrar un cobro adicional NO le regala saldo al paciente =="
+# El cobro adicional no toca el saldo. Pero grababa saldo_generado = 0 con saldo_previo = lo que
+# el paciente tuviera, y como el consumo de credito se lee restando los dos, la fila decia que
+# se habia comido su saldo entero. Al borrarla, revertir() deshacia ese consumo inventado: con
+# S/ 25 a favor, borrar una venta de S/ 20 dejaba al paciente con S/ 50.
+read CC PC <<< $(nueva_cita 50); ponerSaldo $PC 25
+post /api/pagos "{\"paciente\":{\"id\":$PC},\"cita\":{\"id\":$CC},\"metodo\":{\"id\":1},\"montoRecibido\":20,\"esAdicional\":true,\"concepto\":\"venta\"}" >/dev/null
+PIDA=$(q "SELECT max(id) FROM pagos WHERE paciente_id=$PC AND es_adicional")
+check "saldo intacto tras la venta" "25.00" "$(saldo $PC)"
+check "la fila no finge consumo"    "0.00"  "$(q "SELECT (COALESCE(saldo_previo,0)-COALESCE(saldo_generado,0))::numeric(12,2) FROM pagos WHERE id=$PIDA")"
+curl -s -o /dev/null -X DELETE "$API/api/pagos/$PIDA" -H "Authorization: Bearer $TOK"
+check "saldo intacto tras borrarla" "25.00" "$(saldo $PC)"
+
 echo
 echo "RESULTADO: $OK correctos, $KO fallos"

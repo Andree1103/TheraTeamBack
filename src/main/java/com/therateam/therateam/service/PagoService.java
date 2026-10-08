@@ -36,6 +36,8 @@ public class PagoService {
     private final CitaRepository citaRepository;
     private final CatEstadoPagoCitaRepository catEstadoPagoCitaRepository;
     private final TratamientoRepository tratamientoRepository;
+    /** Fase 1 del libro de movimientos: se escribe en paralelo, nadie lee todavia. */
+    private final LibroService libro;
     private final SesionRepository sesionRepository;
     private final PacienteRepository pacienteRepository;
     private final CatMetodoPagoRepository catMetodoPagoRepository;
@@ -110,13 +112,22 @@ public class PagoService {
 
             p.setMontoRecibido(monto);
             p.setMontoAplicado(monto);
-            p.setSaldoGenerado(BigDecimal.ZERO);
-            p.setSaldoPrevio(paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO);
+            // El saldo no se toca, asi que entra y sale igual.
+            //
+            // Aqui se grababa saldo_generado = 0 junto a saldo_previo = lo que tuviera. El saldo
+            // del paciente no cambiaba —eso estaba bien— pero la fila quedaba diciendo que este
+            // cobro se habia comido todo su credito, porque el consumo se lee restando los dos.
+            // Y al borrar el pago, revertir() deshacia ese consumo inventado: borrar una venta a
+            // un paciente con S/ 25 a favor le dejaba S/ 50. Dinero de la nada, reproducido.
+            BigDecimal suSaldo = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
+            p.setSaldoPrevio(suSaldo);
+            p.setSaldoGenerado(suSaldo);
             Pago guardado = repository.save(p);
 
             // Después del save: las líneas necesitan el id del pago para colgarse de él.
             ventaService.confirmar(guardado.getId(), itemsVenta);
             guardado.setItems(itemsVenta);
+            libro.cobro(guardado);
             return guardado;
         }
 
@@ -324,6 +335,7 @@ public class PagoService {
             );
         }
 
+        libro.cobro(saved);
         return saved;
     }
 
@@ -598,7 +610,11 @@ public class PagoService {
         devolucion.setNotas("Devolución de dinero por anulación de cita — salió por: "
                 + (original.getMetodo() != null && original.getMetodo().getNombre() != null
                    ? original.getMetodo().getNombre().trim() : "sin método registrado"));
-        return repository.save(devolucion);
+        Pago guardada = repository.save(devolucion);
+        // El reverso ya cubre las dos mitades —lo que sale del cajón y lo que vuelve como
+        // crédito—, así que no se anota además una devolución suelta: contaría dos veces.
+        libro.reverso(original, "Devolución del pago #" + original.getId());
+        return guardada;
     }
 
     /**
@@ -635,7 +651,10 @@ public class PagoService {
         devolucion.setNotas(concepto + " — salió por: "
                 + (porDondeSalio != null && porDondeSalio.getNombre() != null
                    ? porDondeSalio.getNombre().trim() : "sin método registrado"));
-        return repository.save(devolucion);
+        Pago guardada = repository.save(devolucion);
+        // Sin pago de origen: no consta de qué cobro salía. La devolución se anota igual.
+        libro.devolucion(guardada, null);
+        return guardada;
     }
 
     /** El método más reciente usado en un pago real (no devolución/adicional) del paquete —
@@ -708,6 +727,7 @@ public class PagoService {
             // que no dice nada. Pasa siempre que el paciente pagó de más o usó saldo a favor.
             // Se desligan en vez de borrarse — revertir() ya dejó anotado el movimiento que
             // explica la devolución y el historial del paciente no debe perder ninguna línea.
+            libro.reverso(p, "Se eliminó el pago #" + id);
             saldoMovimientoRepository.desligarDelPago(id);
             repository.deleteById(id);
             return true;
@@ -778,6 +798,13 @@ public class PagoService {
                             motivoMovimiento, p.getCita(), p);
                 });
             }
+
+            libro.anulacionAFavor(
+                    p.getPaciente() != null ? p.getPaciente().getId() : null,
+                    p.getId(), montoAplicado, aDevolver,
+                    p.getCita() != null ? p.getCita().getId() : null,
+                    p.getTratamiento() != null ? p.getTratamiento().getId() : null,
+                    motivoMovimiento);
         });
     }
 }
