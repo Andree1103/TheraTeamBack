@@ -61,7 +61,14 @@ public class LibroService {
 
             a.linea(CREDITO_USA,    previo.subtract(generado).max(BigDecimal.ZERO));
             a.linea(CREDITO_GENERA, generado.subtract(previo).max(BigDecimal.ZERO));
-            a.linea(DEUDA_CUBRE,    nvl(p.getMontoAplicado()), null, citaDe(p), tratamientoDe(p));
+            // Un cobro adicional es una VENTA, no el pago de la deuda de la cita: crea su propio
+            // cargo y lo salda en el acto, y el monto_pagado de la cita no se mueve. Si se anota
+            // contra ella, el libro dice que esa cita tiene 20 cobrados y la cita dice 0.
+            // Lo caza el reconciliador —asi aparecio— y por eso la linea va sin cita: la
+            // referencia se queda en la nota, que es donde sirve y no descuadra nada.
+            boolean esVenta = Boolean.TRUE.equals(p.getEsAdicional());
+            a.linea(DEUDA_CUBRE, nvl(p.getMontoAplicado()), null,
+                    esVenta ? null : citaDe(p), esVenta ? null : tratamientoDe(p));
             guardar(a);
         }, "cobro del pago #" + p.getId());
     }
@@ -146,8 +153,11 @@ public class LibroService {
 
             a.linea(CREDITO_GENERA, previo.subtract(generado).max(BigDecimal.ZERO));
             a.linea(CREDITO_USA,    generado.subtract(previo).max(BigDecimal.ZERO));
-            a.linea(DEUDA_LIBERA,   nvl(original.getMontoAplicado()), null,
-                    citaDe(original), tratamientoDe(original));
+            // Misma salvedad que en cobro(): deshacer una venta no libera deuda de la cita,
+            // porque nunca se le cargo.
+            boolean eraVenta = Boolean.TRUE.equals(original.getEsAdicional());
+            a.linea(DEUDA_LIBERA, nvl(original.getMontoAplicado()), null,
+                    eraVenta ? null : citaDe(original), eraVenta ? null : tratamientoDe(original));
             guardar(a);
         }, "reverso del pago #" + original.getId());
     }
@@ -200,7 +210,9 @@ public class LibroService {
         return p.getTratamiento() != null ? p.getTratamiento().getId() : null;
     }
     private static String describir(Pago p) {
-        if (Boolean.TRUE.equals(p.getEsAdicional())) return "Cobro adicional";
+        if (Boolean.TRUE.equals(p.getEsAdicional()))
+            return "Cobro adicional" + (citaDe(p) != null ? " (cita #" + citaDe(p) + ")" : "")
+                 + (p.getConcepto() != null && !p.getConcepto().isBlank() ? " — " + p.getConcepto() : "");
         if (citaDe(p) != null) return "Cobro de cita #" + citaDe(p);
         if (tratamientoDe(p) != null) return "Cobro de paquete #" + tratamientoDe(p);
         return "Adelanto a cuenta";

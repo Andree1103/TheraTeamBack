@@ -17,10 +17,32 @@ post() { curl -s -o /dev/null -w "%{http_code}" -X POST "$API$1" -H "Authorizati
 # tocara pacientes.saldo_a_favor, la auditoria (db/auditoria-dinero.sql) marcaria al paciente
 # como descuadrado — y seria culpa del arnes, no del sistema.
 ponerSaldo() { # $1 paciente, $2 importe
+  # Tres escrituras, no una. El arnes tiene que dejar el mismo rastro que dejaria el sistema:
+  # el saldo, su movimiento y su asiento en el libro. Si se salta alguno, el descuadre que
+  # aparece luego es culpa de la prueba y no del codigo — y perseguir eso cuesta una tarde.
+  # Ya paso con saldo_movimientos; el asiento se olvido al montar el libro y el reconciliador
+  # canto 11 pacientes que estaban perfectamente.
   x "UPDATE pacientes SET saldo_a_favor=$2 WHERE id=$1;
      INSERT INTO saldo_movimientos (paciente_id, monto, saldo_resultante, motivo, fecha)
      VALUES ($1, $2 - COALESCE((SELECT saldo_resultante FROM saldo_movimientos WHERE paciente_id=$1 ORDER BY id DESC LIMIT 1),0),
              $2, 'Ajuste de la bateria de pruebas', now());"
+  # El asiento: la diferencia contra lo que el libro ya le reconoce. Positiva se le reconoce
+  # credito, negativa se le retira; la contrapartida es constancia porque no pasa por caja.
+  x "WITH antes AS (
+       SELECT COALESCE(SUM(CASE WHEN l.concepto='CREDITO_GENERA' THEN l.importe
+                                WHEN l.concepto='CREDITO_USA'    THEN -l.importe ELSE 0 END),0) AS libro
+         FROM asientos a JOIN asiento_lineas l ON l.asiento_id=a.id WHERE a.paciente_id=$1),
+     d AS (SELECT ($2 - libro)::numeric(12,2) AS v FROM antes),
+     nuevo AS (
+       INSERT INTO asientos (tipo, fecha, paciente_id, nota)
+       SELECT 'AJUSTE', now(), $1, 'Ajuste de la bateria de pruebas' FROM d WHERE abs(v) > 0.005
+       RETURNING id)
+     INSERT INTO asiento_lineas (asiento_id, concepto, importe)
+     SELECT nuevo.id, c.concepto, c.importe FROM nuevo, d
+     CROSS JOIN LATERAL (VALUES
+        (CASE WHEN d.v > 0 THEN 'CONSTANCIA'     ELSE 'CREDITO_USA'       END, abs(d.v)),
+        (CASE WHEN d.v > 0 THEN 'CREDITO_GENERA' ELSE 'CONSTANCIA_LIBERA' END, abs(d.v))
+     ) AS c(concepto, importe);"
 }
 
 OK=0; KO=0
