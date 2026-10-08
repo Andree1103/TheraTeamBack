@@ -52,15 +52,21 @@ class PagoServiceTest {
     @Mock private VentaService ventaService;
     @Mock private com.therateam.therateam.repository.CierreCajaRepository cierreCajaRepository;
     @Mock private CajaService cajaService;
+    /**
+     * El libro de movimientos va mockeado: estos tests miran lo que el motor CALCULA, y el libro
+     * solo anota lo ya decidido. Que sus asientos cuadren se comprueba en otro sitio —la propia
+     * base lo exige, y la batería db/pruebas-dinero.sh lo recorre de punta a punta.
+     */
+    @Mock private LibroService libro;
 
     private PagoService service;
 
     @BeforeEach
     void setUp() {
         service = new PagoService(repository, citaRepository, catEstadoPagoCitaRepository,
-                tratamientoRepository, sesionRepository, pacienteRepository, catMetodoPagoRepository,
-                saldoMovimientoService, saldoMovimientoRepository, ventaService,
-                cierreCajaRepository, cajaService);
+                tratamientoRepository, libro, sesionRepository, pacienteRepository,
+                catMetodoPagoRepository, saldoMovimientoService, saldoMovimientoRepository,
+                ventaService, cierreCajaRepository, cajaService);
         lenient().when(ventaService.preparar(any())).thenReturn(java.util.List.of());
         // Por defecto la caja del dia esta abierta; el test del bloqueo lo cambia a proposito.
         lenient().when(cierreCajaRepository.findByFechaAndTurno(any(), any())).thenReturn(Optional.empty());
