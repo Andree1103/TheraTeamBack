@@ -78,7 +78,42 @@ public class TratamientoService {
     public Optional<Tratamiento> findById(Long id) { return repository.findById(id); }
     public List<Tratamiento> findByPaciente(Long pacienteId) { return repository.findByPacienteId(pacienteId); }
     public List<Tratamiento> findByTerapeuta(Long terapeutaId) { return repository.findByTerapeutaId(terapeutaId); }
-    public Tratamiento save(Tratamiento t) { return repository.save(t); }
+    public Tratamiento save(Tratamiento t) {
+        // Un paquete no puede NACER completado: no se ha dado ni una sesion.
+        exigirQueCompletadoTengaSentido(t, 0);
+        return repository.save(t);
+    }
+
+    /**
+     * "Completado" significa que las sesiones se dieron, no que el paquete se pago.
+     *
+     * Se puso aqui porque en produccion aparecio un paquete en COMPLETADO con 0 de 10 sesiones
+     * atendidas y 450 de 450 cobrados: alguien eligio ese estado entendiendo "pago completo".
+     * Es una lectura razonable del nombre, y mientras el desplegable lo ofrezca va a repetirse,
+     * asi que el que no cuadra no se guarda.
+     *
+     * Para cerrar un paquete que el paciente dejo a medias estan PAUSADO y CANCELADO, que es lo
+     * que de verdad paso en esos casos.
+     */
+    private void exigirQueCompletadoTengaSentido(Tratamiento t, long atendidas) {
+        boolean completado = t.getEstado() != null && "COMPLETADO".equals(t.getEstado().getKey());
+        if (!completado) return;
+        int total = t.getTotalSesiones() != null ? t.getTotalSesiones() : 0;
+        if (atendidas >= total && total > 0) return;
+        throw new IllegalArgumentException(
+                "No se puede marcar como Completado: van " + atendidas + " de " + total
+              + " sesiones atendidas. \"Completado\" quiere decir que las sesiones ya se dieron, "
+              + "no que el paquete este pagado. Si el paciente lo dejo, usa Pausado o Cancelado.");
+    }
+
+    /** Cuantas citas de este paquete estan ASISTIDA. */
+    private long sesionesAtendidas(Long tratamientoId) {
+        List<Long> ids = sesionRepository.findByTratamientoId(tratamientoId).stream().map(Sesion::getId).toList();
+        if (ids.isEmpty()) return 0;
+        return citaRepository.findBySesionIdIn(ids).stream()
+                .filter(c -> c.getEstado() != null && "ASISTIDA".equals(c.getEstado().getKey()))
+                .count();
+    }
 
     /**
      * El formulario de edición solo expone paciente/terapeuta/tipo/estado/sesiones/precio/fecha/notas
@@ -88,6 +123,7 @@ public class TratamientoService {
      */
     public Optional<Tratamiento> update(Long id, Tratamiento data) {
         return repository.findById(id).map(e -> {
+            exigirQueCompletadoTengaSentido(data, sesionesAtendidas(id));
             e.setPaciente(data.getPaciente());
             e.setTerapeuta(data.getTerapeuta());
             e.setTipoTerapia(data.getTipoTerapia());
