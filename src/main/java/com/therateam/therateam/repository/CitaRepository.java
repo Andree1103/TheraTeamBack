@@ -278,6 +278,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
            AND c.fechaInicio >= :desde
            AND c.estado.key NOT IN ('ANULADA', 'NO_ASISTIO', 'REPROGRAMADA', 'ASISTIDA')
            AND COALESCE(c.montoPagado, 0) = 0
+           AND c.estadoPago.key = 'SIN_PAGO'
            AND NOT EXISTS (SELECT 1 FROM Pago p WHERE p.cita.id = c.id)
          ORDER BY c.fechaInicio
         """)

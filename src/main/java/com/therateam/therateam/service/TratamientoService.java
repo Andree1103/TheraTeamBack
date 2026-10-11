@@ -185,11 +185,23 @@ public class TratamientoService {
         if (List.of("ANULADA", "NO_ASISTIO", "REPROGRAMADA", "ASISTIDA").contains(estado)) {
             throw new IllegalArgumentException(quien + " esta en estado " + estado + " y ya no es una sesion por dar.");
         }
+        // Tres formas de preguntar lo mismo, porque las tres pueden fallar por separado:
+        // el importe cobrado, la existencia de un pago, y lo que la cita DICE de su pago.
+        // La tercera parece redundante y no lo es: una cita puede quedar marcada PAGADA o
+        // DESCONTADA sin importe ni pago detras (un pago borrado a medias, un arreglo a mano),
+        // y absorberla la metería en el paquete dando por saldada una sesion que nadie pago.
+        // En el volcado del 07/10 no hay ninguna asi; se comprueba igual porque "no hay hoy"
+        // no es lo mismo que "no puede haber".
         boolean tieneDinero = c.getMontoPagado() != null
                 && c.getMontoPagado().compareTo(java.math.BigDecimal.ZERO) > 0;
         if (tieneDinero || !pagoRepository.findByCitaId(c.getId()).isEmpty()) {
             throw new IllegalArgumentException(quien + " ya tiene dinero cobrado. Cobra el paquete aparte o "
                     + "elimina ese pago antes de meterla.");
+        }
+        String estadoPago = c.getEstadoPago() != null ? c.getEstadoPago().getKey() : "SIN_PAGO";
+        if (!"SIN_PAGO".equals(estadoPago)) {
+            throw new IllegalArgumentException(quien + " figura como " + estadoPago
+                    + ", asi que no entra en un paquete. Solo se pueden meter citas sin ningun pago.");
         }
     }
 
