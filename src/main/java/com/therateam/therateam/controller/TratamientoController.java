@@ -20,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/tratamientos")
@@ -61,6 +62,33 @@ public class TratamientoController {
     }
 
     /** Cuántas sesiones ya tienen cita creada y cuántas de esas están pagadas/pendientes. */
+    /**
+     * GET /api/tratamientos/absorbibles?pacienteId=1&terapeutaId=3&tipoTerapiaId=12
+     *
+     * Las citas sueltas que ya tiene agendadas el paciente con ese terapeuta y ese tipo, y que
+     * se podrian meter en el paquete que se esta creando. Solo las que no tienen dinero de por
+     * medio: con un pago apuntando a la cita, ese dinero esta ligado a ella y no al paquete.
+     */
+    @GetMapping("/absorbibles")
+    public List<CitaDTO> absorbibles(@RequestParam Long pacienteId,
+                                     @RequestParam Long terapeutaId,
+                                     @RequestParam Long tipoTerapiaId) {
+        return service.absorbibles(pacienteId, terapeutaId, tipoTerapiaId).stream()
+                .map(citaService::toDTO).toList();
+    }
+
+    /**
+     * POST /api/tratamientos/{id}/absorber   body: [12, 15, 18]
+     *
+     * Mete esas citas en el paquete como sesiones suyas y les pone su precio por sesion.
+     */
+    @PostMapping("/{id}/absorber")
+    public ResponseEntity<Map<String, Object>> absorber(@PathVariable Long id,
+                                                        @RequestBody List<Long> citaIds) {
+        int metidas = service.absorber(id, citaIds);
+        return ResponseEntity.ok(Map.of("metidas", metidas));
+    }
+
     @GetMapping("/{id}/cobertura")
     public ResponseEntity<TratamientoCoberturaDTO> getCobertura(@PathVariable Long id) {
         return ResponseEntity.ok(service.cobertura(id));

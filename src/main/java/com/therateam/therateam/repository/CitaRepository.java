@@ -256,4 +256,33 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
 
     /** Las citas colgadas de esas sesiones — para poder borrar un paquete entero de una vez. */
     List<Cita> findBySesionIdIn(java.util.Collection<Long> sesionIds);
+
+    /**
+     * Citas sueltas del paciente que se podrian meter en un paquete de ese terapeuta y tipo.
+     *
+     * Las condiciones son las que hacen que absorberla sea seguro:
+     *   - suelta (sesion_id IS NULL): si ya es de un paquete, moverla seria sacarla de otro.
+     *   - sin un sol cobrado y sin ningun pago apuntandole: en cuanto hay dinero de por medio,
+     *     ese dinero esta ligado a la cita y no al paquete, y absorberla lo dejaria colgando.
+     *   - en pie: una anulada, una inasistencia o una reprogramada no son sesiones futuras.
+     *   - desde hoy: meter en un paquete nuevo una cita de hace tres semanas no es lo que
+     *     nadie quiere decir con "las citas que ya tiene agendadas".
+     */
+    @Query("""
+        SELECT c FROM Cita c
+         WHERE c.paciente.id = :pacienteId
+           AND c.terapeuta.id = :terapeutaId
+           AND c.tipoTerapia.id = :tipoTerapiaId
+           AND c.sesion IS NULL
+           AND c.eliminado = false
+           AND c.fechaInicio >= :desde
+           AND c.estado.key NOT IN ('ANULADA', 'NO_ASISTIO', 'REPROGRAMADA', 'ASISTIDA')
+           AND COALESCE(c.montoPagado, 0) = 0
+           AND NOT EXISTS (SELECT 1 FROM Pago p WHERE p.cita.id = c.id)
+         ORDER BY c.fechaInicio
+        """)
+    List<Cita> absorbiblesEnPaquete(@Param("pacienteId") Long pacienteId,
+                                    @Param("terapeutaId") Long terapeutaId,
+                                    @Param("tipoTerapiaId") Long tipoTerapiaId,
+                                    @Param("desde") java.time.LocalDateTime desde);
 }

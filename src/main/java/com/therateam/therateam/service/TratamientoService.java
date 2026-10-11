@@ -4,6 +4,7 @@ import com.therateam.therateam.dto.SesionDTO;
 import com.therateam.therateam.dto.TratamientoCoberturaDTO;
 import com.therateam.therateam.dto.TratamientoDTO;
 import com.therateam.therateam.model.*;
+import com.therateam.therateam.repository.CatEstadoSesionRepository;
 import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PagoRepository;
 import com.therateam.therateam.repository.SesionRepository;
@@ -26,6 +27,7 @@ public class TratamientoService {
     private final SesionRepository sesionRepository;
     private final PagoRepository pagoRepository;
     private final CitaRepository citaRepository;
+    private final CatEstadoSesionRepository catEstadoSesionRepository;
 
     @Transactional(readOnly = true)
     public Page<TratamientoDTO> findAllPaged(Pageable pageable, String paciente, String terapeuta,
@@ -104,6 +106,97 @@ public class TratamientoService {
                 "No se puede marcar como Completado: van " + atendidas + " de " + total
               + " sesiones atendidas. \"Completado\" quiere decir que las sesiones ya se dieron, "
               + "no que el paquete este pagado. Si el paciente lo dejo, usa Pausado o Cancelado.");
+    }
+
+    /**
+     * Las citas sueltas del paciente que se podrian meter en este paquete.
+     *
+     * Se consulta antes de crearlo, con el terapeuta y el tipo ya elegidos, para no obligar a
+     * nadie a borrar citas y volver a crearlas dentro del paquete — que es lo que se hacia.
+     */
+    @Transactional(readOnly = true)
+    public List<Cita> absorbibles(Long pacienteId, Long terapeutaId, Long tipoTerapiaId) {
+        if (pacienteId == null || terapeutaId == null || tipoTerapiaId == null) return List.of();
+        return citaRepository.absorbiblesEnPaquete(pacienteId, terapeutaId, tipoTerapiaId,
+                java.time.LocalDate.now().atStartOfDay());
+    }
+
+    /**
+     * Mete citas que ya existian dentro del paquete, como sesiones suyas.
+     *
+     * Cada cita pasa a colgar de una sesion nueva y toma el precio por sesion del paquete. Lo
+     * segundo es a peticion del negocio y tiene sentido: al agruparlas se acuerda un precio, y
+     * si cada una conservara el suyo el paquete costaria una cosa y sus sesiones otra.
+     *
+     * Solo se tocan citas SIN dinero. En cuanto hay un pago apuntando a la cita, ese dinero
+     * esta ligado a ella y no al paquete: absorberla dejaria el pago colgando de una sesion
+     * cuyo cobro vive en otro sitio, que es exactamente la clase de descuadre que costo la
+     * semana pasada. Se valida aqui y no solo en la consulta porque entre que se lista y se
+     * confirma puede entrar un pago.
+     */
+    @Transactional
+    public int absorber(Long tratamientoId, List<Long> citaIds) {
+        if (citaIds == null || citaIds.isEmpty()) return 0;
+        Tratamiento t = repository.findById(tratamientoId)
+                .orElseThrow(() -> new IllegalArgumentException("Paquete no encontrado: " + tratamientoId));
+
+        List<Sesion> sesiones = sesionRepository.findByTratamientoId(tratamientoId);
+        int total = t.getTotalSesiones() != null ? t.getTotalSesiones() : 0;
+        if (sesiones.size() + citaIds.size() > total) {
+            throw new IllegalArgumentException("No caben: el paquete es de " + total + " sesiones, ya tiene "
+                    + sesiones.size() + " y se intentan añadir " + citaIds.size() + ".");
+        }
+
+        int numero = sesiones.stream().map(Sesion::getNumero).filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo).orElse(0);
+        int metidas = 0;
+
+        for (Long citaId : citaIds) {
+            Cita c = citaRepository.findById(citaId)
+                    .orElseThrow(() -> new IllegalArgumentException("Cita no encontrada: " + citaId));
+            exigirQueSeaAbsorbible(c, t);
+
+            Sesion s = new Sesion();
+            s.setTratamiento(t);
+            s.setNumero(++numero);
+            s.setEstado(sesiones.isEmpty() ? estadoSesionPorDefecto() : sesiones.get(0).getEstado());
+            Sesion guardada = sesionRepository.save(s);
+
+            c.setSesion(guardada);
+            if (t.getPrecioPorSesion() != null) c.setPrecio(t.getPrecioPorSesion());
+            citaRepository.save(c);
+
+            guardada.setCitaActiva(c);
+            sesionRepository.save(guardada);
+            metidas++;
+        }
+        return metidas;
+    }
+
+    private void exigirQueSeaAbsorbible(Cita c, Tratamiento t) {
+        String quien = "La cita #" + c.getId();
+        if (Boolean.TRUE.equals(c.getEliminado())) throw new IllegalArgumentException(quien + " esta eliminada.");
+        if (c.getSesion() != null) throw new IllegalArgumentException(quien + " ya pertenece a un paquete.");
+        if (c.getPaciente() == null || t.getPaciente() == null
+                || !c.getPaciente().getId().equals(t.getPaciente().getId())) {
+            throw new IllegalArgumentException(quien + " es de otro paciente.");
+        }
+        String estado = c.getEstado() != null ? c.getEstado().getKey() : "";
+        if (List.of("ANULADA", "NO_ASISTIO", "REPROGRAMADA", "ASISTIDA").contains(estado)) {
+            throw new IllegalArgumentException(quien + " esta en estado " + estado + " y ya no es una sesion por dar.");
+        }
+        boolean tieneDinero = c.getMontoPagado() != null
+                && c.getMontoPagado().compareTo(java.math.BigDecimal.ZERO) > 0;
+        if (tieneDinero || !pagoRepository.findByCitaId(c.getId()).isEmpty()) {
+            throw new IllegalArgumentException(quien + " ya tiene dinero cobrado. Cobra el paquete aparte o "
+                    + "elimina ese pago antes de meterla.");
+        }
+    }
+
+    /** El estado con el que nacen las sesiones. Mismo criterio que usa CitaService. */
+    private CatEstadoSesion estadoSesionPorDefecto() {
+        return catEstadoSesionRepository.findAll().stream().findFirst()
+                .orElseThrow(() -> new IllegalStateException("No hay estados de sesion en el catalogo."));
     }
 
     /** Cuantas citas de este paquete estan ASISTIDA. */
