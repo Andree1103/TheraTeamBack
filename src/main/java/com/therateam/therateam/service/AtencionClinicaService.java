@@ -52,18 +52,36 @@ public class AtencionClinicaService {
         Cita cita = citaRepository.findById(req.getCitaId())
                 .orElseThrow(() -> new IllegalArgumentException("Cita no encontrada: " + req.getCitaId()));
 
-        // Antes aqui se exigia que la cita estuviera PAGADA. Se quito, y el motivo importa:
-        // la sesion YA OCURRIO. Negarse a anotarla no cobra nada, solo deja sin registro un
-        // trabajo que se hizo — y empujaba a recepcion a inventar un pago con el metodo "Sin
-        // pago" para desbloquear la pantalla. De ahi salieron un arqueo descuadrado en miles
-        // de soles y saldos a favor creados de la nada al anular esas citas.
-        //
-        // La deuda no desaparece: la cita conserva su precio y su estado de pago, sigue
-        // apareciendo en Pagos como pendiente y en la deuda total del paciente. Lo que cambia
-        // es que el cobro y la historia clinica dejan de estar atados.
-
         boolean esNueva = false;
         AtencionClinica atencion = repository.findByCitaId(req.getCitaId()).orElse(null);
+
+        // Para atender, la cita tiene que estar pagada. Decision del negocio, reafirmada.
+        //
+        // Esta regla ya existio y se quito el 03/10, porque bloquear la pantalla cuando la
+        // sesion YA OCURRIO empujaba a recepcion a inventar un pago con "Sin pago" para
+        // desbloquearla: de ahi salieron un arqueo con S/ 5.290 que no estaban en el cajon y
+        // saldos a favor creados de la nada al anular esas citas.
+        //
+        // Vuelve ahora porque ese atajo ya no hace daño: "Sin pago" esta marcado
+        // cuenta_en_caja = false y no toca el arqueo, y anular una cita cobrada asi no genera
+        // saldo (lo cubre el caso 6 de db/pruebas-dinero.sh). El atajo sigue estando; lo que
+        // se le quito fueron las dos consecuencias.
+        //
+        // Solo al CREAR: si la atencion ya existe se puede corregir aunque la cita siga
+        // debiendo. Si no, las sesiones que se atendieron antes de esta regla quedarian
+        // congeladas, sin poder ni arreglarles una nota.
+        if (esNueva || atencion == null) {
+            String estadoPago = cita.getEstadoPago() != null ? cita.getEstadoPago().getKey() : null;
+            if (!"PAGADA".equals(estadoPago)) {
+                java.math.BigDecimal precio = cita.getPrecio() != null ? cita.getPrecio() : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal pagado = cita.getMontoPagado() != null ? cita.getMontoPagado() : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal falta = precio.subtract(pagado).max(java.math.BigDecimal.ZERO);
+                throw new IllegalArgumentException(
+                        "No se puede registrar la atencion: la cita no esta pagada"
+                      + (falta.compareTo(java.math.BigDecimal.ZERO) > 0 ? " (faltan S/ " + falta + ")" : "")
+                      + ". Cobrala primero desde Pagos o desde la propia cita.");
+            }
+        }
 
         if (atencion == null) {
             atencion = new AtencionClinica();
