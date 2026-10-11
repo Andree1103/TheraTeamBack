@@ -118,7 +118,7 @@ public class TratamientoService {
     public List<Cita> absorbibles(Long pacienteId, Long terapeutaId, Long tipoTerapiaId) {
         if (pacienteId == null || terapeutaId == null || tipoTerapiaId == null) return List.of();
         return citaRepository.absorbiblesEnPaquete(pacienteId, terapeutaId, tipoTerapiaId,
-                java.time.LocalDate.now().atStartOfDay());
+                java.time.LocalDate.now().atStartOfDay(), EstadosDeCita.YA_NO_ES_UNA_SESION_POR_DAR);
     }
 
     /**
@@ -182,7 +182,7 @@ public class TratamientoService {
             throw new IllegalArgumentException(quien + " es de otro paciente.");
         }
         String estado = c.getEstado() != null ? c.getEstado().getKey() : "";
-        if (List.of("ANULADA", "NO_ASISTIO", "REPROGRAMADA", "ASISTIDA").contains(estado)) {
+        if (EstadosDeCita.yaNoEsUnaSesionPorDar(estado)) {
             throw new IllegalArgumentException(quien + " esta en estado " + estado + " y ya no es una sesion por dar.");
         }
         // Tres formas de preguntar lo mismo, porque las tres pueden fallar por separado:

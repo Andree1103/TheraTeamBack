@@ -276,7 +276,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
            AND c.sesion IS NULL
            AND c.eliminado = false
            AND c.fechaInicio >= :desde
-           AND c.estado.key NOT IN ('ANULADA', 'NO_ASISTIO', 'REPROGRAMADA', 'ASISTIDA')
+           AND c.estado.key NOT IN :estadosFuera
            AND COALESCE(c.montoPagado, 0) = 0
            AND c.estadoPago.key = 'SIN_PAGO'
            AND NOT EXISTS (SELECT 1 FROM Pago p WHERE p.cita.id = c.id)
@@ -285,5 +285,6 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
     List<Cita> absorbiblesEnPaquete(@Param("pacienteId") Long pacienteId,
                                     @Param("terapeutaId") Long terapeutaId,
                                     @Param("tipoTerapiaId") Long tipoTerapiaId,
-                                    @Param("desde") java.time.LocalDateTime desde);
+                                    @Param("desde") java.time.LocalDateTime desde,
+                                    @Param("estadosFuera") java.util.Collection<String> estadosFuera);
 }
