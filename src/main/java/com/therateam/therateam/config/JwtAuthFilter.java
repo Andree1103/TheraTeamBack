@@ -90,6 +90,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PUEDE_VER_SALDO_INICIAL"));
                 }
 
+                // Y quien puede mover la hora de corte, que no es operar la caja sino cambiar
+                // la regla que la parte en dos.
+                Boolean editaCorte = claims.get("puedeEditarHoraCorte", Boolean.class);
+                if (Boolean.TRUE.equals(editaCorte)) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_EDITAR_HORA_CORTE"));
+                }
+
                 var authentication = new UsernamePasswordAuthenticationToken(
                         claims.getSubject(), null, authorities);
                 // Los claims completos (terapeutaId, citasSoloPropias, etc.) quedan disponibles para

@@ -59,7 +59,12 @@ public class CajaController {
         return java.util.Map.of("horaCorte", service.horaCorte().toString());
     }
 
-    @PreAuthorize("hasAuthority('MODULO_CAJA_EDITAR')")
+    /**
+     * Permiso propio, no el "editar" del modulo: cambiar esta hora no es operar la caja del
+     * dia, es mover la linea que la parte en dos — y eso recalcula que entro en cada turno,
+     * incluidos los que ya estan cerrados.
+     */
+    @PreAuthorize("hasAuthority('PUEDE_EDITAR_HORA_CORTE')")
     @PutMapping("/hora-corte")
     public java.util.Map<String, String> actualizarHoraCorte(@RequestBody java.util.Map<String, String> body) {
         return java.util.Map.of("horaCorte", service.actualizarHoraCorte(body.get("horaCorte")));

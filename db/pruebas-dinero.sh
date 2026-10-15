@@ -50,8 +50,29 @@ check() { # nombre esperado obtenido
   if [ "$2" = "$3" ]; then OK=$((OK+1)); printf "  ok   %-52s %s\n" "$1" "$3"
   else KO=$((KO+1)); printf "  FALLA %-52s esperaba %s, salio %s\n" "$1" "$2" "$3"; fi
 }
+# Una cita limpia con ese precio, para gastarla en un caso.
+#
+# CREA la suya en vez de buscar una existente. Antes buscaba, y como cada pasada deja la cita
+# pagada o anulada, la bateria se quedaba sin candidatas y empezaba a fallar en masa: 30 fallos
+# que no eran del codigo sino de haberla corrido demasiadas veces. Pasa tres veces antes de que
+# me diera por arreglarlo.
+#
+# Al crearlas, correrla dos veces seguidas da el mismo resultado, que es lo minimo que se le
+# pide a una bateria.
 nueva_cita() { # precio -> "id paciente"
-  q "SELECT c.id||' '||c.paciente_id FROM citas c JOIN cat_estados_cita e ON e.id=c.estado_id JOIN cat_estados_pago_cita ep ON ep.id=c.estado_pago_id WHERE e.key='PROGRAMADA' AND ep.key='SIN_PAGO' AND c.precio=$1 AND c.sesion_id IS NULL AND c.eliminado=false AND NOT EXISTS (SELECT 1 FROM pagos pg WHERE pg.cita_id=c.id) ORDER BY c.id DESC LIMIT 1"
+  x "INSERT INTO citas (paciente_id, terapeuta_id, tipo_terapia_id, fecha_inicio, fecha_fin,
+                        duracion_minutos, estado_id, modalidad_id, estado_pago_id, precio,
+                        monto_pagado, eliminado, created_at, updated_at, recordatorio_enviado)
+     SELECT c.paciente_id, c.terapeuta_id, c.tipo_terapia_id,
+            now() + interval '30 day', now() + interval '30 day' + interval '40 minute', 40,
+            (SELECT id FROM cat_estados_cita WHERE key='PROGRAMADA'),
+            c.modalidad_id,
+            (SELECT id FROM cat_estados_pago_cita WHERE key='SIN_PAGO'),
+            $1, 0, false, now(), now(), false
+       FROM citas c
+      WHERE c.terapeuta_id IS NOT NULL AND c.tipo_terapia_id IS NOT NULL AND c.modalidad_id IS NOT NULL
+      ORDER BY c.id DESC LIMIT 1"
+  q "SELECT c.id||' '||c.paciente_id FROM citas c ORDER BY c.id DESC LIMIT 1"
 }
 saldo() { q "SELECT COALESCE(saldo_a_favor,0)::numeric(12,2) FROM pacientes WHERE id=$1"; }
 epago() { q "SELECT ep.key FROM citas c JOIN cat_estados_pago_cita ep ON ep.id=c.estado_pago_id WHERE c.id=$1"; }

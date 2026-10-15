@@ -44,6 +44,16 @@ public class CatRol {
     private Boolean puedeVerSaldoInicial;
 
     /**
+     * Si el rol puede cambiar la hora de corte de la caja.
+     *
+     * Aparte del "editar" del modulo Caja a proposito: ese permiso es para operar el dia
+     * —egresos, reabrir un turno— y la hora de corte no es una operacion, es la REGLA que
+     * parte el dia en dos. Moverla recalcula que entro en cada turno, incluidos los cerrados.
+     */
+    @Column(name = "puede_editar_hora_corte")
+    private Boolean puedeEditarHoraCorte;
+
+    /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
      * lectura/navegación; crear/editar/eliminar son flags independientes (las lecturas de datos
      * de referencia cross-módulo siguen abiertas a cualquier autenticado, ver SecurityConfig).

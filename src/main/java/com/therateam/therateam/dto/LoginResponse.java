@@ -25,4 +25,6 @@ public class LoginResponse {
     private boolean puedeCorregirAtencion;
     /** Viene del ROL: si es false, la pantalla de Caja no muestra el saldo inicial. */
     private boolean puedeVerSaldoInicial;
+    /** Viene del ROL: si es false, no se puede cambiar la hora de corte de la caja. */
+    private boolean puedeEditarHoraCorte;
 }
