@@ -30,10 +30,17 @@ public class TratamientoService {
     private final CatEstadoSesionRepository catEstadoSesionRepository;
 
     @Transactional(readOnly = true)
+    /**
+     * `desde`/`hasta` acotan por la fecha de INICIO del paquete, que es la que la pantalla muestra
+     * y por la que se pregunta cuando se pide "los paquetes de octubre". Se filtra por el paquete
+     * y no por sus sesiones a proposito: un paquete que arranco en septiembre y termina en
+     * noviembre es un paquete de septiembre, no de los tres meses.
+     */
     public Page<TratamientoDTO> findAllPaged(Pageable pageable, String paciente, String terapeuta,
-                                              Long tipoTerapiaId, String estado) {
+                                              Long tipoTerapiaId, String estado,
+                                              java.time.LocalDate desde, java.time.LocalDate hasta) {
         return conConteoDeCitas(repository.findAllProjected(blankToNull(paciente), blankToNull(terapeuta),
-                tipoTerapiaId, blankToNull(estado), pageable));
+                tipoTerapiaId, blankToNull(estado), desde, hasta, pageable));
     }
 
     /**

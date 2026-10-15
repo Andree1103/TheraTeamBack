@@ -26,15 +26,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DisponibilidadService {
 
-    /**
-     * Las claves que significan "esta cita ya no va" — no ocupan horario.
-     *
-     * Hoy solo se escribe ANULADA; las dos viejas siguen aquí porque una sola fila sin migrar
-     * bastaría para que una cita anulada siguiera bloqueando su hora. REPROGRAMADA entra por lo
-     * mismo: la cita original se queda en su hora vieja como constancia, y esa hora está libre.
-     */
-    private static final List<String> ESTADOS_CANCELADOS =
-            List.of("ANULADA", "CANCELADA_PACIENTE", "CANCELADA_CLINICA", "REPROGRAMADA");
+    /** Las citas que ya no ocupan su horario. La lista es la misma que usa CitaService al validar. */
+    private static final List<String> ESTADOS_CANCELADOS = com.therateam.therateam.model.EstadosDeCita.NO_OCUPAN_SU_HORA;
     private static final long SEGUNDOS_DIA = 86_400L;
 
     private final TerapeutaHorarioRepository horarioRepository;

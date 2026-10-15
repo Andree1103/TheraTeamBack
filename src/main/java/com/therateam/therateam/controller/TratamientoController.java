@@ -37,14 +37,23 @@ public class TratamientoController {
         return dto;
     }
 
-    /** GET /api/tratamientos?page=0&size=20&paciente=x&terapeuta=x&tipoTerapiaId=1&estado=EN_CURSO */
+    /** GET /api/tratamientos?page=0&size=20&paciente=x&terapeuta=x&tipoTerapiaId=1&estado=EN_CURSO&desde=2026-10-01&hasta=2026-10-31 */
     @GetMapping
     public Page<TratamientoDTO> getAll(@PageableDefault(size = 20) Pageable pageable,
                                         @RequestParam(required = false) String paciente,
                                         @RequestParam(required = false) String terapeuta,
                                         @RequestParam(required = false) Long tipoTerapiaId,
-                                        @RequestParam(required = false) String estado) {
-        return service.findAllPaged(pageable, paciente, terapeuta, tipoTerapiaId, estado).map(this::redactarTelefono);
+                                        @RequestParam(required = false) String estado,
+                                        @RequestParam(required = false)
+                                        @org.springframework.format.annotation.DateTimeFormat(
+                                                iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+                                        java.time.LocalDate desde,
+                                        @RequestParam(required = false)
+                                        @org.springframework.format.annotation.DateTimeFormat(
+                                                iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+                                        java.time.LocalDate hasta) {
+        return service.findAllPaged(pageable, paciente, terapeuta, tipoTerapiaId, estado, desde, hasta)
+                .map(this::redactarTelefono);
     }
 
     @GetMapping("/{id}")

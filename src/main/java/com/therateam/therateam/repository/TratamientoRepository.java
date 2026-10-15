@@ -48,9 +48,13 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
                OR LOWER(CONCAT(u.nombre, ' ', u.apellido)) LIKE LOWER(CONCAT('%', CAST(:terapeuta AS string), '%')))
           AND (CAST(:tipoTerapiaId AS long) IS NULL OR tt.id = :tipoTerapiaId)
           AND (CAST(:estado AS string) IS NULL OR es.key = :estado)
+          AND (CAST(:desde AS date) IS NULL OR t.fechaInicio >= :desde)
+          AND (CAST(:hasta AS date) IS NULL OR t.fechaInicio <= :hasta)
         """)
     Page<TratamientoDTO> findAllProjected(@Param("paciente") String paciente, @Param("terapeuta") String terapeuta,
                                            @Param("tipoTerapiaId") Long tipoTerapiaId, @Param("estado") String estado,
+                                           @Param("desde") java.time.LocalDate desde,
+                                           @Param("hasta") java.time.LocalDate hasta,
                                            Pageable pageable);
 
     @Query("""

@@ -58,14 +58,11 @@ public class CitaService {
             List.of("ANULADA", "CANCELADA_PACIENTE", "CANCELADA_CLINICA");
 
     /**
-     * Estados en los que la cita ya no va a ocurrir y, por tanto, no ocupa su hueco.
-     *
-     * REPROGRAMADA se suma a las anuladas: la cita original se queda como constancia en su hora
-     * vieja, y si siguiera contando, esa hora quedaría bloqueada para siempre y ni la propia
-     * cita nueva podría ocuparla.
+     * Estados en los que la cita ya no ocupa su hueco. La lista vive en EstadosDeCita porque
+     * DisponibilidadService hace la misma pregunta y las dos copias ya se habían separado: aquí
+     * faltaban las inasistencias, así que un paciente que no vino seguía reservando su hora.
      */
-    private static final List<String> ESTADOS_QUE_NO_OCUPAN =
-            List.of("ANULADA", "CANCELADA_PACIENTE", "CANCELADA_CLINICA", "REPROGRAMADA");
+    private static final List<String> ESTADOS_QUE_NO_OCUPAN = EstadosDeCita.NO_OCUPAN_SU_HORA;
 
     public List<CitaDTO> findAll() {
         return citaRepository.findAllProjected(org.springframework.data.domain.Pageable.unpaged()).getContent();

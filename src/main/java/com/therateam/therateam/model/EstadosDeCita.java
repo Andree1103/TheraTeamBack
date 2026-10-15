@@ -34,6 +34,23 @@ public final class EstadosDeCita {
             List.of("NO_ASISTIO", "INASISTENCIA", "INASISTENCIA SIN");
 
     /**
+     * Estados en los que la cita ya NO OCUPA su hora: ese hueco se puede volver a agendar.
+     *
+     * Las canceladas y las reprogramadas por lo evidente —esa cita ya no va a pasar—, y las
+     * inasistencias porque el paciente no vino: la hora quedo libre de hecho, y guardarsela a
+     * alguien que no aparecio es regalar un hueco que se puede vender. La cita no se borra, sigue
+     * en su hora como rastro de que se reservo y no se uso; lo unico que cambia es que deja de
+     * bloquear.
+     *
+     * Hoy coincide valor por valor con NO_SE_COBRAN, pero son dos preguntas distintas —"se le
+     * puede cobrar" y "ocupa el hueco"— y un dia la respuesta puede separarse. Se construye
+     * aparte a proposito para que ese dia se cambie una sola y no las dos sin querer.
+     */
+    public static final List<String> NO_OCUPAN_SU_HORA = java.util.stream.Stream
+            .of(CANCELADAS, INASISTENCIAS, List.of("REPROGRAMADA"))
+            .flatMap(List::stream).toList();
+
+    /**
      * Estados en los que ya no se le puede COBRAR nada nuevo a la cita.
      *
      * Ojo con lo que NO esta aqui: ASISTIDA. Una sesion que se dio y no se pago es una deuda
