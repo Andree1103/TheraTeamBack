@@ -45,7 +45,22 @@ public class ReconciliadorService {
          WHERE abs(COALESCE(pa.saldo_a_favor,0) - COALESCE(pr.libro,0)) > 0.005
         """;
 
-    /** Cobrado de una cita = deuda cubierta menos deuda liberada, de las lineas que la nombran. */
+    /**
+     * Cobrado de una cita = deuda cubierta menos deuda liberada, de las lineas que la nombran.
+     *
+     * POR QUE SE SALTA LAS CITAS DE PAQUETE
+     *
+     * En un paquete el dinero no se cobra sesion a sesion: entra una vez contra el tratamiento y
+     * el sistema lo reparte despues entre las sesiones para que cada cita se vea pagada. El libro
+     * anota el hecho tal y como paso —un DEUDA_CUBRE contra el paquete—, asi que comparar cita por
+     * cita da una diferencia en cada sesion sin que falte un solo sol. Eran las 71 que este aviso
+     * cantaba a diario.
+     *
+     * Lo que importa —que el total del paquete cuadre— lo comprueba PAQUETES unas lineas mas abajo,
+     * sobre la misma suma. Lo que queda sin vigilar es como se reparte ese total entre sesiones, y
+     * eso no mueve dinero: ni caja, ni saldo, ni deuda del paciente. CuadreService excluye estas
+     * citas por lo mismo desde el principio.
+     */
     private static final String CITAS = """
         WITH proy AS (
           SELECT l.cita_id,
@@ -58,6 +73,7 @@ public class ReconciliadorService {
           JOIN pacientes pa ON pa.id = c.paciente_id
           LEFT JOIN proy pr ON pr.cita_id = c.id
          WHERE c.eliminado = false
+           AND c.sesion_id IS NULL
            AND abs(COALESCE(c.monto_pagado,0) - COALESCE(pr.libro,0)) > 0.005
         """;
 
@@ -78,12 +94,20 @@ public class ReconciliadorService {
      *
      * Las devoluciones quedan fuera: el suyo es el reverso del cobro original y cuelga de ese
      * otro pago, asi que aqui saldrian como huecos sin serlo.
+     *
+     * Y tambien los pagos que no movieron nada. Un cobro de cero —una cita que ya no debia nada,
+     * por ejemplo— no tiene ninguna linea que escribir, asi que el libro no le abre asiento: no es
+     * un camino sin cubrir, es que no habia nada que anotar. Un pago con asiento vacio y un pago
+     * que se nos escapo se veian igual desde aqui.
      */
     private static final String PAGOS_SIN_ASIENTO = """
         SELECT p.id, COALESCE(pa.nombre,'') || ' ' || COALESCE(pa.apellido,'') AS quien,
                COALESCE(p.monto_recibido,0) AS guardado, 0::numeric AS segun_el_libro
           FROM pagos p JOIN pacientes pa ON pa.id = p.paciente_id
          WHERE NOT COALESCE(p.es_devolucion, false)
+           AND (COALESCE(p.monto_recibido,0) <> 0
+                OR COALESCE(p.monto_aplicado,0) <> 0
+                OR COALESCE(p.saldo_generado,0) <> COALESCE(p.saldo_previo,0))
            AND NOT EXISTS (SELECT 1 FROM asientos a WHERE a.pago_id = p.id)
         """;
 
