@@ -217,19 +217,12 @@ public class CitaService {
             }
 
             if (req.getMetodoPagoId() != null) {
-                Pago ultimo = pagoRepository.findByCitaId(cita.getId()).stream()
-                        .filter(pg -> !Boolean.TRUE.equals(pg.getEsDevolucion()) && !Boolean.TRUE.equals(pg.getEsAdicional()))
-                        .max(java.util.Comparator.comparing(Pago::getId))
-                        .orElseThrow(() -> new IllegalArgumentException(
-                                "Esta cita no tiene ningún pago registrado, así que no hay método de pago que corregir."));
-                CatMetodoPago metodo = catMetodoPagoRepository.findById(req.getMetodoPagoId())
-                        .orElseThrow(() -> new IllegalArgumentException("Método de pago no encontrado: " + req.getMetodoPagoId()));
-                String actual = ultimo.getMetodo() != null ? ultimo.getMetodo().getNombre() : "-";
-                if (!metodo.getId().equals(ultimo.getMetodo() != null ? ultimo.getMetodo().getId() : null)) {
-                    cambios.add("método de pago: " + actual + " -> " + metodo.getNombre());
-                    ultimo.setMetodo(metodo);
-                    pagoRepository.save(ultimo);
-                }
+                // Delegado en PagoService: cambiar el metodo no es cambiar una etiqueta — mueve
+                // el dinero de columna en el arqueo y tiene que quedar en el libro. Aqui se hacia
+                // a mano y se quedaba corto: no recalculaba trajo_dinero, asi que un cobro
+                // corregido a "Sin pago" seguia sumando al cajon.
+                String cambio = pagoService.corregirMetodo(cobroDeLaCita(cita.getId()), req.getMetodoPagoId());
+                if (cambio != null) cambios.add(cambio);
             }
 
             if (cambios.isEmpty()) return toDTO(cita);
@@ -238,6 +231,31 @@ public class CitaService {
             registrarCorreccion(guardada, cambios, req.getMotivo());
             return toDTO(guardada);
         });
+    }
+
+    /**
+     * Cambia el metodo de pago de una cita, este atendida o no.
+     *
+     * Aparte de corregirAtencion a proposito: aquella es la excepcion para reescribir una sesion
+     * ya dada —terapeuta, tipo, precio— y exige que la cita este ASISTIDA. Equivocarse de medio
+     * al cobrar no tiene nada que ver con eso y pasa sobre todo en citas que aun no ocurrieron,
+     * que es cuando se cobra. Atarlo a ASISTIDA dejaba sin arreglo el caso mas comun.
+     *
+     * Queda en el historial de la cita igual que el resto de correcciones.
+     */
+    @Transactional
+    public Optional<CitaDTO> corregirMetodoDePago(Long id, Long metodoPagoId, String motivo) {
+        return citaRepository.findById(id).map(cita -> {
+            String cambio = pagoService.corregirMetodo(cobroDeLaCita(cita.getId()), metodoPagoId);
+            if (cambio != null) registrarCorreccion(cita, List.of(cambio), motivo);
+            return toDTO(cita);
+        });
+    }
+
+    private Pago cobroDeLaCita(Long citaId) {
+        return pagoService.ultimoCobroDeLaCita(citaId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Esta cita no tiene ningún pago registrado, así que no hay método de pago que corregir."));
     }
 
     private String nombreTerapeuta(Terapeuta t) {

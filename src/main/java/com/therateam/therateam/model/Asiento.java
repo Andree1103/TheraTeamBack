@@ -25,7 +25,7 @@ import java.util.List;
 @Data @NoArgsConstructor @AllArgsConstructor
 public class Asiento {
 
-    public enum Tipo { COBRO, DEVOLUCION, ANULACION, AJUSTE }
+    public enum Tipo { COBRO, DEVOLUCION, ANULACION, AJUSTE, CORRECCION }
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

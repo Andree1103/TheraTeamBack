@@ -162,6 +162,48 @@ public class LibroService {
         }, "reverso del pago #" + original.getId());
     }
 
+    /**
+     * Corregir el metodo de un cobro ya registrado: se retira la linea vieja y se pone la nueva.
+     *
+     * No se reescribe el asiento original. El cobro ocurrio como ocurrio y el libro lo cuenta
+     * entero: primero entraron 50 por Efectivo, despues se corrigio a Yape. Pisar la linea vieja
+     * dejaria el historial diciendo que siempre fue Yape, y entonces el libro ya no sirve para
+     * responder "quien toco esto y cuando" — que es la mitad de para lo que existe.
+     *
+     * UNA SOLA REGLA, Y CUADRA SOLA
+     *
+     * Lo viejo se retira con su opuesto y lo nuevo se pone con su concepto. Como cada pareja de
+     * opuestos tiene un miembro a cada lado de la ecuacion, las dos sumas se mueven lo mismo y
+     * el asiento cuadra sin que haya nada que ajustar:
+     *
+     *   Efectivo -> Yape        CAJA_SALE(efectivo) + CAJA_ENTRA(yape)
+     *   Efectivo -> Sin pago    CAJA_SALE(efectivo) + CONSTANCIA
+     *   Sin pago -> Efectivo    CONSTANCIA_LIBERA  + CAJA_ENTRA(efectivo)
+     *
+     * `entroDinero` dice de que lado estaba el movimiento original: un cobro mete dinero y una
+     * devolucion lo saca, y corregir el metodo de una devolucion es el mismo gesto del reves.
+     */
+    public void correccionDeMetodo(Pago p, Long metodoAnterior, boolean traiaDinero,
+                                   boolean traeDinero, boolean entroDinero, String nota) {
+        enSuPropiaTransaccion(() -> {
+            BigDecimal importe = nvl(p.getMontoRecibido());
+            if (importe.compareTo(BigDecimal.ZERO) <= 0) return;      // nada que mover
+            if (traiaDinero == traeDinero
+                    && java.util.Objects.equals(metodoAnterior, metodoDe(p))) return;
+
+            Asiento a = cabecera(Asiento.Tipo.CORRECCION, p, nota);
+            a.setFecha(LocalDateTime.now());   // la correccion pasa hoy, no el dia del cobro
+
+            // Se retira lo que decia antes...
+            if (traiaDinero) a.linea(entroDinero ? CAJA_SALE : CAJA_ENTRA, importe, metodoAnterior, null, null);
+            else             a.linea(entroDinero ? CONSTANCIA_LIBERA : CONSTANCIA, importe);
+            // ...y se pone lo que dice ahora.
+            if (traeDinero)  a.linea(entroDinero ? CAJA_ENTRA : CAJA_SALE, importe, metodoDe(p), null, null);
+            else             a.linea(entroDinero ? CONSTANCIA : CONSTANCIA_LIBERA, importe);
+            guardar(a);
+        }, "corrección de método del pago #" + p.getId());
+    }
+
     // ── Fontanería ───────────────────────────────────────────────────────────
 
     private Asiento cabecera(Asiento.Tipo tipo, Pago p, String nota) {

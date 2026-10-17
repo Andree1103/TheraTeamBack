@@ -425,6 +425,72 @@ public class PagoService {
      * El turno se calcula igual que en Caja: hasta la hora de corte configurada es el 1, desde
      * ahi el 2. Si esa regla cambia, cambia en CajaService y esto la sigue.
      */
+    /**
+     * Cambia el metodo de un cobro ya registrado. Devuelve como describirlo, o null si no cambio.
+     *
+     * POR QUE NO BASTA CON CAMBIAR EL CAMPO
+     *
+     * `trajo_dinero` se congela cuando el pago nace (ver Pago.alGuardar) y es lo que decide si la
+     * plata entro al cajon. Tocar solo `metodo_id` dejaba la etiqueta nueva y el dinero donde
+     * estaba: un cobro corregido de Efectivo a "Sin pago" seguia sumando al arqueo. Por eso aqui
+     * se recalcula, y por eso el libro se entera — si no, el arqueo y el libro dicen cosas
+     * distintas sobre el mismo cobro.
+     *
+     * LA CAJA CERRADA NO SE TOCA
+     *
+     * Misma regla que al eliminar un pago, y por el mismo motivo: mover un metodo de un turno ya
+     * cuadrado y firmado cambia hacia atras un total que alguien dio por bueno. La correccion de
+     * un dia cerrado se hace con un movimiento nuevo de hoy, no reescribiendo el pasado.
+     */
+    @Transactional
+    public String corregirMetodo(Pago pago, Long metodoId) {
+        if (metodoId == null) return null;
+        CatMetodoPago nuevo = catMetodoPagoRepository.findById(metodoId)
+                .orElseThrow(() -> new IllegalArgumentException("Método de pago no encontrado: " + metodoId));
+
+        CatMetodoPago anterior = pago.getMetodo();
+        Long anteriorId = anterior != null ? anterior.getId() : null;
+        if (nuevo.getId().equals(anteriorId)) return null;
+
+        verificarQueLaCajaSigaAbiertaParaCorregir(pago);
+
+        boolean traiaDinero = pago.trajoDineroDeVerdad();
+        pago.setMetodo(nuevo);
+        // Se recalcula en vez de conservarse: el congelado de Pago.alGuardar sirve para que el
+        // metodo no reescriba el pasado cuando alguien edita el catalogo, pero aqui el que cambia
+        // es el metodo DE ESTE COBRO, y entonces si manda.
+        pago.setTrajoDinero(nuevo.cuentaEnCajaOEsDinero());
+        boolean traeDinero = pago.trajoDineroDeVerdad();
+        repository.save(pago);
+
+        String desde = anterior != null ? anterior.getNombre() : "-";
+        String cambio = "método de pago: " + desde + " -> " + nuevo.getNombre();
+        libro.correccionDeMetodo(pago, anteriorId, traiaDinero, traeDinero,
+                !Boolean.TRUE.equals(pago.getEsDevolucion()), "Corrección — " + cambio);
+        return cambio;
+    }
+
+    /** El ultimo cobro de verdad de una cita: ni devoluciones ni cobros adicionales. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Pago> ultimoCobroDeLaCita(Long citaId) {
+        return repository.findByCitaId(citaId).stream()
+                .filter(pg -> !Boolean.TRUE.equals(pg.getEsDevolucion()) && !Boolean.TRUE.equals(pg.getEsAdicional()))
+                .max(java.util.Comparator.comparing(Pago::getId));
+    }
+
+    private void verificarQueLaCajaSigaAbiertaParaCorregir(Pago p) {
+        if (p.getFechaPago() == null) return;
+        java.time.LocalDate dia = p.getFechaPago().toLocalDate();
+        int turno = p.getFechaPago().toLocalTime().isBefore(cajaService.horaCorte()) ? 1 : 2;
+        cierreCajaRepository.findByFechaAndTurno(dia, turno).ifPresent(cierre -> {
+            throw new IllegalArgumentException(String.format(
+                    "No se puede cambiar el método: la caja del %s (turno %d) ya está cerrada, "
+                  + "y moverlo cambiaría un arqueo que ya se cuadró. Si el cobro fue de un día "
+                  + "cerrado, corrígelo con una devolución y un cobro nuevo con fecha de hoy.",
+                    dia.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")), turno));
+        });
+    }
+
     private void verificarQueLaCajaSigaAbierta(Pago p) {
         if (p.getFechaPago() == null) return;
         java.time.LocalDate dia = p.getFechaPago().toLocalDate();

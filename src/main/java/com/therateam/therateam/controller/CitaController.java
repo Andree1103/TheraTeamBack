@@ -226,4 +226,27 @@ public class CitaController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
+
+    /**
+     * PUT /api/citas/{id}/metodo-pago — corrige el medio con el que se cobro esa cita.
+     *
+     * Va con el permiso de EDITAR de Pagos y no con el de corregir atenciones: quien se equivoca
+     * al elegir el medio es quien cobra, y es quien tiene que poder arreglarlo en el momento.
+     * Pedirle que busque a un administrador por un Yape marcado como efectivo es lo que hace que
+     * al final nadie lo corrija.
+     *
+     * Si la caja de ese turno ya esta cerrada, el servicio lo rechaza con su motivo.
+     */
+    @PreAuthorize("hasAuthority('MODULO_PAGOS_EDITAR')")
+    @PutMapping("/{id}/metodo-pago")
+    public ResponseEntity<CitaDTO> corregirMetodoDePago(@PathVariable Long id,
+                                                         @RequestBody java.util.Map<String, Object> body) {
+        Object m = body.get("metodoPagoId");
+        if (m == null) throw new IllegalArgumentException("Falta el método de pago.");
+        Long metodoId = Long.valueOf(m.toString());
+        Object motivo = body.get("motivo");
+        return service.corregirMetodoDePago(id, metodoId, motivo != null ? motivo.toString() : null)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
 }
