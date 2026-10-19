@@ -10,8 +10,6 @@ import com.therateam.therateam.config.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -41,6 +39,7 @@ public class LibroService {
 
     private final AsientoRepository asientoRepository;
     private final AsientoLineaRepository lineaRepository;
+    private final EnSuPropiaTransaccion enOtraTransaccion;
 
     /**
      * Un cobro, tal y como lo dejó el motor.
@@ -140,6 +139,17 @@ public class LibroService {
      * solo el porqué.
      */
     public void reverso(Pago original, String nota) {
+        reverso(original, nota, false);
+    }
+
+    /**
+     * `elPagoDesaparece` es para cuando lo que se deshace es una ELIMINACION.
+     *
+     * El asiento se escribe despues de confirmar la operacion, y para entonces el pago ya no
+     * esta: colgarlo de su id no es posible —la clave foranea no encuentra a quien apuntar— y
+     * ademas no tendria sentido. El numero sigue en la nota, que es donde se lee.
+     */
+    public void reverso(Pago original, String nota, boolean elPagoDesaparece) {
         enSuPropiaTransaccion(() -> {
             BigDecimal recibido = nvl(original.getMontoRecibido());
             BigDecimal previo   = nvl(original.getSaldoPrevio());
@@ -147,6 +157,7 @@ public class LibroService {
 
             Asiento a = cabecera(Asiento.Tipo.ANULACION, original, nota);
             a.setFecha(LocalDateTime.now()); // deshacerlo pasa hoy, no el día del cobro
+            if (elPagoDesaparece) a.setPagoId(null);
 
             if (original.trajoDineroDeVerdad()) a.linea(CAJA_SALE, recibido, metodoDe(original), null, null);
             else                                a.linea(CONSTANCIA_LIBERA, recibido);
@@ -229,17 +240,13 @@ public class LibroService {
         lineaRepository.saveAll(a.getLineas());
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    protected void ejecutar(Runnable r) { r.run(); }
-
+    /**
+     * El asiento se anota cuando el movimiento que lo origina ya esta confirmado, en una
+     * transaccion propia. El porque —y los dos intentos que no servian— esta en
+     * EnSuPropiaTransaccion, que es donde duele si alguien lo cambia.
+     */
     private void enSuPropiaTransaccion(Runnable r, String que) {
-        try {
-            ejecutar(r);
-        } catch (RuntimeException e) {
-            // El cobro ya está grabado y no se toca. Lo que se pierde es el asiento, y eso lo
-            // destapa el reconciliador — que para eso existe.
-            log.error("[libro] no se pudo anotar {}: {}", que, e.getMessage());
-        }
+        enOtraTransaccion.despuesDeConfirmar(r, que);
     }
 
     private static BigDecimal nvl(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }

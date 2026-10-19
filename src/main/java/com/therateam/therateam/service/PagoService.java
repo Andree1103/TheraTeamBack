@@ -92,6 +92,8 @@ public class PagoService {
             p.setTrajoDinero(false);   // sin metodo = salio del saldo a favor, no entro nada
         }
 
+        exigirQuePaqueteTengaPaquete(p);
+
         // Cobro adicional (ej. "se atendió y se le vendió algo más"): es ingreso aparte, no paga
         // ninguna deuda de cita/paquete ni genera saldo a favor — se registra tal cual se cobró.
         // Es también la vía de la venta de productos: si vienen items, el monto y el concepto
@@ -478,6 +480,41 @@ public class PagoService {
                 .max(java.util.Comparator.comparing(Pago::getId));
     }
 
+    /**
+     * "Paquete" solo vale si de verdad hay un paquete detras.
+     *
+     * Ese metodo significa "esta sesion ya esta cubierta por el paquete del paciente": no entra
+     * dinero porque el dinero entro antes, al comprarlo. Usado en una cita suelta no cubre nada,
+     * y el motor lo toma al pie de la letra: da la deuda por saldada sin que entre un sol a caja
+     * y sin tocar el saldo a favor. El resultado es dinero inventado.
+     *
+     * Paso en produccion. Un paciente con S/ 185 adelantados pago cinco sesiones de S/ 37: cuatro
+     * descontaron del saldo y la quinta se cobro con "Paquete" por S/ 37. El libro lo anoto como
+     * lo que era —"S/ 37 dados por pagados sin movimiento de caja"— y al paciente le quedaron
+     * S/ 37 que ya se habia gastado. Lo reportaron como "no esta descontando el saldo", y eso era.
+     *
+     * No se prohibe cobrar sin dinero: para eso esta "Sin pago", que es una decision con nombre
+     * —auspicio, campaña, cortesia— y no una opcion que se elige por estar en la lista.
+     */
+    private void exigirQuePaqueteTengaPaquete(Pago p) {
+        if (p.getMetodo() == null || p.getMetodo().getId() == null) return;
+        boolean esPaquete = catMetodoPagoRepository.findById(p.getMetodo().getId())
+                .map(m -> "Paquete".equalsIgnoreCase(m.getNombre() != null ? m.getNombre().trim() : ""))
+                .orElse(false);
+        if (!esPaquete) return;
+
+        if (p.getTratamiento() != null && p.getTratamiento().getId() != null) return;
+        if (p.getCita() != null && p.getCita().getId() != null
+                && citaRepository.findById(p.getCita().getId())
+                        .map(c -> c.getSesion() != null && c.getSesion().getTratamiento() != null)
+                        .orElse(false)) return;
+
+        throw new IllegalArgumentException(
+                "El medio \"Paquete\" es para sesiones que ya cubre un paquete, y esta cita no "
+              + "pertenece a ninguno. Si el paciente tiene saldo a favor, cóbrala con su saldo; "
+              + "si no se le va a cobrar, usa \"Sin pago\".");
+    }
+
     private void verificarQueLaCajaSigaAbiertaParaCorregir(Pago p) {
         if (p.getFechaPago() == null) return;
         java.time.LocalDate dia = p.getFechaPago().toLocalDate();
@@ -793,7 +830,8 @@ public class PagoService {
             // que no dice nada. Pasa siempre que el paciente pagó de más o usó saldo a favor.
             // Se desligan en vez de borrarse — revertir() ya dejó anotado el movimiento que
             // explica la devolución y el historial del paciente no debe perder ninguna línea.
-            libro.reverso(p, "Se eliminó el pago #" + id);
+            // El pago se va en esta misma operacion, asi que el asiento no puede colgar de el.
+            libro.reverso(p, "Se eliminó el pago #" + id, true);
             saldoMovimientoRepository.desligarDelPago(id);
             repository.deleteById(id);
             return true;
