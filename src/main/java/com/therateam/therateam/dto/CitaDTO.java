@@ -205,4 +205,18 @@ public class CitaDTO {
     /** Nombre del usuario que creó la cita. */
     @JsonProperty("usuario_creacion_nombre")
     private String usuarioCreacionNombre;
+
+    /**
+     * Quien toco la cita por ultima vez, y quien registro su atencion.
+     *
+     * Van fuera del constructor a proposito: cuatro consultas distintas proyectan este DTO y
+     * anadir parametros obligaria a tocar las cuatro por un dato que solo mira el Excel. Se
+     * rellenan despues, en una sola consulta por pagina — el mismo patron que usa el listado de
+     * paquetes para contar sus citas.
+     */
+    @JsonProperty("usuario_modificacion_nombre")
+    private String usuarioModificacionNombre;
+
+    @JsonProperty("usuario_atencion_nombre")
+    private String usuarioAtencionNombre;
 }

@@ -95,13 +95,44 @@ public class CitaService {
         // Con la lista vacía la consulta nunca llega al IN, pero JPA igual exige un valor: se manda
         // un id imposible en vez de null para no depender de cómo cada driver trate la colección.
         List<Long> ids = sinFiltroTerapeutas ? List.of(-1L) : terapeutaIds;
-        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin,
+        return conQuienLaToco(citaRepository.findByFiltrosProjected(fechaInicio, fechaFin,
                 // terapeuta y paciente se comparan con LIKE LOWER(...): van en minúscula.
                 paraLike(terapeuta), terapeutaIdRestriccion, estadoKey, paraLike(paciente),
                 // estadoPagoKey y tipoTerapiaKey se comparan por igualdad contra la columna `key`,
                 // que está en mayúscula ('PAGADA', 'KIDS'): pasarlas a minúscula no encontraría nada.
                 areaId, metodoPagoId, soloBlanco(estadoPagoKey), soloBlanco(tipoTerapiaKey),
-                sinFiltroTerapeutas, ids, traducirOrden(pageable));
+                sinFiltroTerapeutas, ids, traducirOrden(pageable)));
+    }
+
+    /**
+     * Rellena quien edito la cita por ultima vez y quien registro su atencion.
+     *
+     * Hasta ahora el Excel de Citas y el de Atenciones solo decian quien CREO la cita, que casi
+     * nunca es quien hizo lo que se esta revisando: una cita la agenda recepcion y la atencion la
+     * registra el terapeuta horas despues.
+     *
+     * Una sola consulta para toda la pagina, no una por fila: son dos JOIN contra Usuario y el
+     * listado puede traer 10.000 filas cuando se exporta.
+     */
+    private Page<CitaDTO> conQuienLaToco(Page<CitaDTO> pagina) {
+        List<Long> ids = pagina.getContent().stream().map(CitaDTO::getId)
+                .filter(java.util.Objects::nonNull).toList();
+        if (ids.isEmpty()) return pagina;
+
+        java.util.Map<Long, String[]> porCita = new java.util.HashMap<>();
+        for (Object[] f : citaRepository.quienLaToco(ids)) {
+            porCita.put(((Number) f[0]).longValue(),
+                    new String[]{ f[1] != null ? f[1].toString() : null,
+                                  f[2] != null ? f[2].toString() : null });
+        }
+        pagina.getContent().forEach(dto -> {
+            String[] q = porCita.get(dto.getId());
+            if (q != null) {
+                dto.setUsuarioModificacionNombre(q[0]);
+                dto.setUsuarioAtencionNombre(q[1]);
+            }
+        });
+        return pagina;
     }
 
     private static String paraLike(String s) {

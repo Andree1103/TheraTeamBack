@@ -39,6 +39,25 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, List<String> estadoKeys);
 
     /**
+     * Por cada cita: quien la edito por ultima vez y quien registro su atencion.
+     *
+     * Nativa y no JPQL porque atencion_clinica no tiene relacion inversa desde Cita, y anadirla
+     * solo para esto cargaria la atencion entera en cada listado. Devuelve [citaId, editor,
+     * registrador]; una cita sin atencion trae null en el tercero, que es lo correcto.
+     */
+    @Query(value = """
+        SELECT c.id,
+               TRIM(CONCAT(um.nombre, ' ', um.apellido)),
+               TRIM(CONCAT(ua.nombre, ' ', ua.apellido))
+          FROM citas c
+          LEFT JOIN usuarios um ON um.id = c.idusuario_modificacion
+          LEFT JOIN atencion_clinica ac ON ac.cita_id = c.id
+          LEFT JOIN usuarios ua ON ua.id = ac.idusuario_creacion
+         WHERE c.id IN (:ids)
+        """, nativeQuery = true)
+    List<Object[]> quienLaToco(@Param("ids") List<Long> ids);
+
+    /**
      * Proyección liviana para listados: trae SOLO las columnas de CitaDTO en vez de la entidad
      * completa (que por sus asociaciones EAGER arrastra sesion→tratamiento→paciente/tipoTerapia,
      * terapeuta→usuario/tipoTerapeuta/area/especialidades, etc. — mucho más de lo que se usa).
