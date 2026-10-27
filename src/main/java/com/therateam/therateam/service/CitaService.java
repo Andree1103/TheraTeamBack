@@ -528,9 +528,9 @@ public class CitaService {
     /**
      * Dar o quitar el visto bueno a una cita.
      *
-     * Quien valida no puede ser quien cargo la cita: si lo fuera, la "doble" validacion la haria
-     * una sola persona y no habria segundo par de ojos, que es lo unico que aporta. Se corta aqui
-     * y no en la pantalla porque la pantalla se puede saltar.
+     * Valida cualquiera que tenga el permiso del rol, haya cargado la cita o no: el control es el
+     * permiso, no de quien venga la cita. Queda guardado quien dio el visto bueno y cuando, que es
+     * lo que despues permite responder "quien aprobo esto".
      */
     @Transactional
     public Optional<CitaDTO> cambiarValidacion(Long id, boolean validada) {
@@ -541,10 +541,6 @@ public class CitaService {
                 c.setValidadaPor(null);
                 c.setValidadaEn(null);
                 return toDTO(citaRepository.save(c));
-            }
-            if (quien != null && quien.equals(c.getUsuarioCreacionId())) {
-                throw new IllegalArgumentException(
-                        "No puedes validar una cita que cargaste tu. Pidele el visto bueno a otra persona.");
             }
             c.setValidada(true);
             c.setValidadaEn(LocalDateTime.now());
