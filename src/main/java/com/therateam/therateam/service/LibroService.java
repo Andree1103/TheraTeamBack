@@ -122,6 +122,38 @@ public class LibroService {
     }
 
     /**
+     * Una reprogramación: el dinero no se mueve, cambia la cita a la que se le atribuye.
+     *
+     * Al reprogramar, los pagos pasan a la cita nueva y la vieja queda en cero. El libro no se
+     * enteraba: sus líneas seguían nombrando a la cita vieja, así que el reconciliador veía una
+     * cita cobrada sin dinero y otra con dinero sin cobrar — el par de diferencias que salía por
+     * cada reprogramación. No faltaba un sol; estaba mal dicho de quién era.
+     *
+     * NO se reescriben las líneas viejas. La atribución se corrige como todo lo demás en este
+     * libro: con un asiento nuevo que retira de un lado y pone en el otro. Así el movimiento
+     * queda contado —se puede ver que esa cita se movió y cuándo— en vez de desaparecer.
+     *
+     * Cuadra por construcción: DEUDA_LIBERA está a la izquierda de la ecuación y DEUDA_CUBRE a
+     * la derecha, con el mismo importe.
+     */
+    public void reprogramacion(Long pacienteId, Long citaVieja, Long citaNueva,
+                               BigDecimal importe, String nota) {
+        BigDecimal total = nvl(importe);
+        if (total.signum() <= 0) return;   // una cita sin cobrar no tiene nada que mover
+        enSuPropiaTransaccion(() -> {
+            Asiento a = new Asiento();
+            a.setTipo(Asiento.Tipo.CORRECCION);
+            a.setFecha(LocalDateTime.now());
+            a.setPacienteId(pacienteId);
+            a.setUsuarioId(SecurityUtils.currentUserId());
+            a.setNota(nota);
+            a.linea(DEUDA_LIBERA, total, null, citaVieja, null);
+            a.linea(DEUDA_CUBRE,  total, null, citaNueva, null);
+            guardar(a);
+        }, "reprogramación de la cita #" + citaVieja + " a la #" + citaNueva);
+    }
+
+    /**
      * Deshacer un cobro: su asiento, del revés.
      *
      * Cada concepto tiene exactamente uno opuesto, y está en el otro lado de la ecuación:

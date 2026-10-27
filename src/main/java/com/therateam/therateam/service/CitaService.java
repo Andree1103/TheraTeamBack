@@ -44,6 +44,7 @@ public class CitaService {
     private final DisponibilidadService disponibilidadService;
     private final PagoService pagoService;
     private final LibroService libro;
+    private final AsientoLineaRepository lineaRepository;
     private final SaldoMovimientoService saldoMovimientoService;
     private final com.therateam.therateam.repository.CitaHistorialRepository citaHistorialRepository;
     private final UsuarioRepository usuarioRepository;
@@ -829,12 +830,32 @@ public class CitaService {
                 .orElseThrow(() -> new IllegalStateException("No existe el estado PROGRAMADA en el catálogo.")));
         Cita guardada = citaRepository.save(nueva);
 
+        // Lo que el libro le atribuye HOY a la cita vieja, antes de mover nada. Se mira aqui y
+        // no despues porque despues los pagos ya apuntan a la cita nueva.
+        //
+        // Las citas de paquete quedan fuera: ahi el libro anota contra el tratamiento, no contra
+        // la cita, asi que no hay ninguna linea de cita que mover y el tratamiento no cambia.
+        BigDecimal atribuido = original.getSesion() == null
+                ? lineaRepository.cubiertoDeLaCita(original.getId())
+                : BigDecimal.ZERO;
+
         // Los pagos pasan a la cita nueva. Las devoluciones y los cobros adicionales se quedan
         // donde ocurrieron: son movimientos cerrados, no el pago de esta sesión.
         for (Pago pago : pagoRepository.findByCitaId(original.getId())) {
             if (Boolean.TRUE.equals(pago.getEsDevolucion()) || Boolean.TRUE.equals(pago.getEsAdicional())) continue;
             pago.setCita(guardada);
             pagoRepository.save(pago);
+        }
+
+        // Y el libro se entera de que el dinero cambio de cita. Sin esto, sus lineas seguian
+        // nombrando a la cita vieja y el reconciliador cantaba dos diferencias por cada
+        // reprogramacion: la vieja cobrada sin dinero y la nueva con dinero sin cobrar.
+        if (atribuido != null && atribuido.signum() > 0) {
+            libro.reprogramacion(
+                    original.getPaciente() != null ? original.getPaciente().getId() : null,
+                    original.getId(), guardada.getId(), atribuido,
+                    "Reprogramación de la cita #" + original.getId()
+                            + " a la #" + guardada.getId() + " — " + motivo);
         }
 
         if (original.getSesion() != null) {
