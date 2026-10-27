@@ -7,6 +7,7 @@ import com.therateam.therateam.model.Configuracion;
 import com.therateam.therateam.repository.CierreCajaRepository;
 import com.therateam.therateam.repository.ConfiguracionRepository;
 import com.therateam.therateam.repository.PagoRepository;
+import com.therateam.therateam.repository.UsuarioRepository;
 import com.therateam.therateam.repository.VentaItemRepository;
 import com.therateam.therateam.dto.VentaResumenDTO;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,7 @@ public class CajaService {
     private final PagoRepository pagoRepository;
     private final ConfiguracionRepository configuracionRepository;
     private final VentaItemRepository ventaItemRepository;
+    private final UsuarioRepository usuarioRepository;
 
     /** Hora de corte entre el turno 1 y el turno 2 — editable desde Configuraciones (clave CAJA_HORA_CORTE_TURNO1). */
     public LocalTime horaCorte() {
@@ -183,6 +185,15 @@ public class CajaService {
         CierreCaja cierre = cierreCajaRepository.findByFechaAndTurno(fecha, turno).orElseGet(CierreCaja::new);
 
         CajaResumenDTO resumenPrevio = resumenDia(fecha, turno);
+
+        // Quien firma estas cifras.
+        //
+        // La columna existe desde siempre y nadie la llenaba: el historial y su Excel traian una
+        // casilla "cerrado por" en blanco en todos los cierres. Se pone en cada cierre, tambien
+        // al actualizarlo, porque lo que interesa es quien respalda el arqueo que se esta
+        // mirando; el primero que lo cerro queda igual en idusuario_creacion, que no se toca.
+        Long quien = com.therateam.therateam.config.SecurityUtils.currentUserId();
+        if (quien != null) usuarioRepository.findById(quien).ifPresent(cierre::setCerradoPor);
 
         cierre.setFecha(fecha);
         cierre.setTurno(turno);
