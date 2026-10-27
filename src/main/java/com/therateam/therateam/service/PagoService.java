@@ -565,7 +565,9 @@ public class PagoService {
     }
 
     /** Revierte el efecto de un pago sobre el saldo del paciente y el tratamiento/cita (usado al eliminar). */
-    private void revertir(Pago p) {
+    private void revertir(Pago p) { revertir(p, null); }
+
+    private void revertir(Pago p, String motivo) {
         // Si el pago era una venta, los productos volvieron al estante: el contador debe subir.
         if (p.getId() != null) ventaService.devolverStock(p.getId());
         if (p.getPaciente() != null && p.getPaciente().getId() != null) {
@@ -592,8 +594,9 @@ public class PagoService {
                         : (efecto.signum() < 0
                             ? " — se devuelven S/ " + efecto.negate() + " de saldo que habia usado"
                             : " — sin efecto sobre su saldo");
+                String porque = motivo != null && !motivo.isBlank() ? " — motivo: " + motivo.trim() : "";
                 saldoMovimientoService.registrar(paciente, efecto.negate(), nuevo,
-                        "Se eliminó el pago #" + p.getId() + detalle, p.getCita(), null);
+                        "Se eliminó el pago #" + p.getId() + detalle + porque, p.getCita(), null);
             });
         }
         BigDecimal montoAplicado = p.getMontoAplicado() != null ? p.getMontoAplicado() : BigDecimal.ZERO;
@@ -818,20 +821,34 @@ public class PagoService {
      * existiendo y las citas seguían PAGADA — la base terminaba peor que antes de intentarlo.
      */
     @Transactional
-    public boolean delete(Long id) {
+    /**
+     * Borrar un pago exige decir por que.
+     *
+     * El caso que lo pedia: la recepcion registra dinero como saldo a favor cuando venia a cobrar
+     * una cita, y al deshacerlo el historial solo decia "se elimino el pago #412". Dos semanas
+     * despues nadie sabe si fue un dedazo, una devolucion acordada o una prueba. El motivo no es
+     * burocracia: es la unica diferencia entre un error corregido y plata que se movio sin
+     * explicacion, y el saldo a favor es deuda de la clinica con el paciente.
+     *
+     * Se valida aqui y no solo en la pantalla porque la pantalla se puede saltar.
+     */
+    public boolean delete(Long id, String motivo) {
+        if (motivo == null || motivo.isBlank()) {
+            throw new IllegalArgumentException("Para eliminar un pago hay que escribir el motivo.");
+        }
         return repository.findById(id).map(p -> {
             // Antes de tocar nada: la caja de ese dia no puede estar cerrada, y su saldo no
             // puede estar ya gastado. Las dos cosas dejarian numeros que nadie puede cuadrar.
             verificarQueLaCajaSigaAbierta(p);
             verificarQueElSaldoSigaDisponible(p);
-            revertir(p);
+            revertir(p, motivo);
             // saldo_movimientos.pago_id no tiene ON DELETE, así que el movimiento que dejó este
             // pago impedía borrarlo: el error salía como "Los datos enviados no son válidos",
             // que no dice nada. Pasa siempre que el paciente pagó de más o usó saldo a favor.
             // Se desligan en vez de borrarse — revertir() ya dejó anotado el movimiento que
             // explica la devolución y el historial del paciente no debe perder ninguna línea.
             // El pago se va en esta misma operacion, asi que el asiento no puede colgar de el.
-            libro.reverso(p, "Se eliminó el pago #" + id, true);
+            libro.reverso(p, "Se eliminó el pago #" + id + " — " + motivo.trim(), true);
             saldoMovimientoRepository.desligarDelPago(id);
             repository.deleteById(id);
             return true;

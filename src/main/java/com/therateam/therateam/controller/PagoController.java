@@ -63,7 +63,8 @@ public class PagoController {
 
     @PreAuthorize("hasAuthority('MODULO_PAGOS_ELIMINAR')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        return service.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+    public ResponseEntity<Void> delete(@PathVariable Long id,
+                                       @RequestParam(required = false) String motivo) {
+        return service.delete(id, motivo) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 }

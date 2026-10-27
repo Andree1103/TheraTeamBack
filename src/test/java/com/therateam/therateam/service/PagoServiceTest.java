@@ -28,6 +28,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -316,7 +318,7 @@ class PagoServiceTest {
         pagoAEliminar.setSaldoGenerado(BigDecimal.ZERO);
         when(repository.findById(7L)).thenReturn(Optional.of(pagoAEliminar));
 
-        boolean eliminado = service.delete(7L);
+        boolean eliminado = service.delete(7L, "prueba");
 
         assertThat(eliminado).isTrue();
         assertThat(t.getTotalCobrado()).isEqualByComparingTo("450");
@@ -338,8 +340,21 @@ class PagoServiceTest {
         adelanto.setSaldoGenerado(new BigDecimal("200"));
         when(repository.findById(9L)).thenReturn(Optional.of(adelanto));
 
-        assertThat(service.delete(9L)).isTrue();
+        assertThat(service.delete(9L, "prueba")).isTrue();
         assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void delete_sinMotivo_seNiegaYNoLeeNiElPago() {
+        // El motivo se exige antes de buscar el pago: si se pudiera borrar sin decir por que, el
+        // historial del paciente quedaria con un movimiento de dinero sin explicacion, que es
+        // exactamente el caso que lo pedia (saldo registrado por error en recepcion).
+        for (String vacio : new String[] { null, "", "   " }) {
+            assertThatThrownBy(() -> service.delete(7L, vacio))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("motivo");
+        }
+        verify(repository, never()).deleteById(any());
     }
 
     @Test
@@ -356,7 +371,7 @@ class PagoServiceTest {
         adelanto.setSaldoGenerado(new BigDecimal("200"));
         when(repository.findById(11L)).thenReturn(Optional.of(adelanto));
 
-        assertThatThrownBy(() -> service.delete(11L))
+        assertThatThrownBy(() -> service.delete(11L, "prueba"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("solo quedan");
         assertThat(paciente.getSaldoAFavor()).isEqualByComparingTo("20");
@@ -389,7 +404,7 @@ class PagoServiceTest {
         pagoAEliminar.setSaldoPrevio(BigDecimal.ZERO);
         when(repository.findById(7L)).thenReturn(Optional.of(pagoAEliminar));
 
-        assertThat(service.delete(7L)).isTrue();
+        assertThat(service.delete(7L, "prueba")).isTrue();
 
         assertThat(t.getTotalCobrado()).isEqualByComparingTo("0");
         assertThat(s1.getCitaActiva().getMontoPagado()).isEqualByComparingTo("0");
@@ -424,7 +439,7 @@ class PagoServiceTest {
         pagoAEliminar.setSaldoPrevio(BigDecimal.ZERO);
         when(repository.findById(9L)).thenReturn(Optional.of(pagoAEliminar));
 
-        assertThat(service.delete(9L)).isTrue();
+        assertThat(service.delete(9L, "prueba")).isTrue();
 
         assertThat(cita.getMontoPagado()).isEqualByComparingTo("0");
         assertThat(cita.getEstadoPago().getKey()).isEqualTo("SIN_PAGO");
