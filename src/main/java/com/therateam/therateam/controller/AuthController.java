@@ -136,7 +136,8 @@ public class AuthController {
                 usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeExportar()),
                 usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeCorregirAtencion()),
                 usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeVerSaldoInicial()),
-                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeEditarHoraCorte())
+                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeEditarHoraCorte()),
+                usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getPuedeValidarCita())
         );
     }
 }

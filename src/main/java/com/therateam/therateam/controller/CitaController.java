@@ -228,6 +228,22 @@ public class CitaController {
     }
 
     /**
+     * PUT /api/citas/{id}/validacion?validada=true — el visto bueno de la doble validacion.
+     *
+     * Permiso propio, no el de editar Citas: si validar viniera con editar, quien carga la cita
+     * podria aprobarse a si mismo y el segundo par de ojos no existiria. El servicio ademas
+     * rechaza que la valide quien la creo.
+     */
+    @PreAuthorize("hasAuthority('PUEDE_VALIDAR_CITA')")
+    @PutMapping("/{id}/validacion")
+    public ResponseEntity<CitaDTO> cambiarValidacion(@PathVariable Long id,
+                                                      @RequestParam boolean validada) {
+        return service.cambiarValidacion(id, validada)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
      * PUT /api/citas/{id}/metodo-pago — corrige el medio con el que se cobro esa cita.
      *
      * Va con el permiso de EDITAR de Pagos y no con el de corregir atenciones: quien se equivoca

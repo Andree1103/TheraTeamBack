@@ -7,6 +7,7 @@ import com.therateam.therateam.dto.LoteResumenDTO;
 import com.therateam.therateam.dto.PacienteInput;
 import com.therateam.therateam.model.*;
 import com.therateam.therateam.repository.*;
+import com.therateam.therateam.config.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -45,6 +46,7 @@ public class CitaService {
     private final LibroService libro;
     private final SaldoMovimientoService saldoMovimientoService;
     private final com.therateam.therateam.repository.CitaHistorialRepository citaHistorialRepository;
+    private final UsuarioRepository usuarioRepository;
 
     /**
      * Las claves que significan "esta cita ya no va".
@@ -119,17 +121,15 @@ public class CitaService {
                 .filter(java.util.Objects::nonNull).toList();
         if (ids.isEmpty()) return pagina;
 
-        java.util.Map<Long, String[]> porCita = new java.util.HashMap<>();
+        java.util.Map<Long, Object[]> porCita = new java.util.HashMap<>();
         for (Object[] f : citaRepository.quienLaToco(ids)) {
-            porCita.put(((Number) f[0]).longValue(),
-                    new String[]{ f[1] != null ? f[1].toString() : null,
-                                  f[2] != null ? f[2].toString() : null });
+            porCita.put(((Number) f[0]).longValue(), f);
         }
         pagina.getContent().forEach(dto -> {
-            String[] q = porCita.get(dto.getId());
+            Object[] q = porCita.get(dto.getId());
             if (q != null) {
-                dto.setUsuarioModificacionNombre(q[0]);
-                dto.setUsuarioAtencionNombre(q[1]);
+                dto.setUsuarioModificacionNombre(q[1] != null ? q[1].toString() : null);
+                dto.setUsuarioAtencionNombre(q[2] != null ? q[2].toString() : null);
             }
         });
         return pagina;
@@ -336,6 +336,7 @@ public class CitaService {
     @Transactional
     public Optional<Cita> update(Long id, Cita data) {
         return citaRepository.findById(id).map(e -> {
+            String firmaAntes = firmaDeLoValidado(e);
             Long terapeutaOriginalId = e.getTerapeuta() != null ? e.getTerapeuta().getId() : null;
             LocalDateTime inicioOriginal = e.getFechaInicio();
             LocalDateTime finOriginal = e.getFechaFin();
@@ -480,7 +481,74 @@ public class CitaService {
                 citaHistorialRepository.save(h);
             }
 
+            // Si cambio algo de lo que se habia validado, el visto bueno caduca.
+            //
+            // Se compara una foto de los campos validados, no "se llamo a update": cambiar una
+            // nota previa o el link de la videollamada no altera lo que el supervisor reviso, y
+            // tumbar el sello por eso convertiria la validacion en un tramite que nadie respeta.
+            if (Boolean.TRUE.equals(e.getValidada()) && !firmaAntes.equals(firmaDeLoValidado(e))) {
+                e.setValidada(false);
+                e.setValidadaPor(null);
+                e.setValidadaEn(null);
+            }
+
             return citaRepository.save(e);
+        });
+    }
+
+    /**
+     * Los campos que cubre el visto bueno, en una cadena comparable.
+     *
+     * Es lo que el supervisor mira al validar: quien, cuando, de que tipo, en que modalidad,
+     * cuanto cuesta y como esta de estado y de pago. Lo que no esta aqui (notas, link de
+     * videollamada, recordatorio) puede cambiar sin invalidar nada.
+     */
+    private String firmaDeLoValidado(Cita c) {
+        // Todo por ID, nunca por key.
+        //
+        // El front manda las asociaciones como {id} y nada mas —es lo que Hibernate necesita para
+        // resolver la FK— asi que getKey() sobre lo recien asignado devuelve null mientras no se
+        // vuelva a leer de la base. Comparando por key, la foto de despues salia distinta
+        // SIEMPRE, y cualquier edicion tumbaba el visto bueno, hasta cambiar una nota. El id
+        // viene en las dos fotos y es el mismo dato.
+        return String.join("|",
+                String.valueOf(c.getPaciente() != null ? c.getPaciente().getId() : null),
+                String.valueOf(c.getTerapeuta() != null ? c.getTerapeuta().getId() : null),
+                String.valueOf(c.getFechaInicio()),
+                String.valueOf(c.getFechaFin()),
+                String.valueOf(c.getTipoTerapia() != null ? c.getTipoTerapia().getId() : null),
+                String.valueOf(c.getModalidad() != null ? c.getModalidad().getId() : null),
+                // El precio se normaliza: 80 y 80.00 son el mismo precio y no deben tumbar el sello.
+                c.getPrecio() != null ? c.getPrecio().stripTrailingZeros().toPlainString() : "null",
+                String.valueOf(c.getEstado() != null ? c.getEstado().getId() : null),
+                String.valueOf(c.getEstadoPago() != null ? c.getEstadoPago().getId() : null));
+    }
+
+    /**
+     * Dar o quitar el visto bueno a una cita.
+     *
+     * Quien valida no puede ser quien cargo la cita: si lo fuera, la "doble" validacion la haria
+     * una sola persona y no habria segundo par de ojos, que es lo unico que aporta. Se corta aqui
+     * y no en la pantalla porque la pantalla se puede saltar.
+     */
+    @Transactional
+    public Optional<CitaDTO> cambiarValidacion(Long id, boolean validada) {
+        Long quien = SecurityUtils.currentUserId();
+        return citaRepository.findById(id).map(c -> {
+            if (!validada) {
+                c.setValidada(false);
+                c.setValidadaPor(null);
+                c.setValidadaEn(null);
+                return toDTO(citaRepository.save(c));
+            }
+            if (quien != null && quien.equals(c.getUsuarioCreacionId())) {
+                throw new IllegalArgumentException(
+                        "No puedes validar una cita que cargaste tu. Pidele el visto bueno a otra persona.");
+            }
+            c.setValidada(true);
+            c.setValidadaEn(LocalDateTime.now());
+            if (quien != null) usuarioRepository.findById(quien).ifPresent(c::setValidadaPor);
+            return toDTO(citaRepository.save(c));
         });
     }
 
@@ -1348,6 +1416,11 @@ public class CitaService {
         dto.setNotasPrevias(c.getNotasPrevias());
         dto.setRecordatorioEnviado(c.getRecordatorioEnviado());
         dto.setTipoRecurrencia(c.getTipoRecurrencia());
+        // El visto bueno, para las respuestas que salen de la entidad (crear, editar, validar).
+        // En los listados lo rellena conQuienLaToco, que proyecta el DTO sin pasar por aqui.
+        dto.setValidada(Boolean.TRUE.equals(c.getValidada()));
+        dto.setValidadaPorNombre(c.getValidadaPor() != null
+                ? (c.getValidadaPor().getNombre() + " " + c.getValidadaPor().getApellido()).trim() : null);
         dto.setMotivoEstado(c.getMotivoEstado());
         if (c.getReprogramacionDe() != null) dto.setReprogramacionDe(c.getReprogramacionDe().getId());
         dto.setPrecio(c.getPrecio());

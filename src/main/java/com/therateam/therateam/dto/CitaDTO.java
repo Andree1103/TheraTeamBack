@@ -26,7 +26,10 @@ public class CitaDTO {
                     Long tratamientoId, String tratamientoNombre, String metodoPagoNombre, String loteMasivoId,
                     String usuarioCreacionNombre, String motivoEstado, Long reprogramacionDe,
                     Long reprogramadaEn, Boolean conDevolucion, java.math.BigDecimal montoDevuelto,
-                    LocalDateTime fechaRegistro) {
+                    LocalDateTime fechaRegistro,
+                    Boolean validada, String validadaPorNombre) {
+        this.validada = Boolean.TRUE.equals(validada);
+        this.validadaPorNombre = validadaPorNombre;
         this.conDevolucion = conDevolucion;
         this.montoDevuelto = montoDevuelto;
         this.fechaRegistro = fechaRegistro;
@@ -219,4 +222,19 @@ public class CitaDTO {
 
     @JsonProperty("usuario_atencion_nombre")
     private String usuarioAtencionNombre;
+
+    /**
+     * Doble validacion: si la cita tiene el visto bueno y de quien.
+     *
+     * A diferencia de los dos de arriba, estos SI van en el constructor de la proyeccion. El
+     * enriquecido por pagina solo lo aplica una de las cuatro rutas de listado, y un sello que
+     * aparece en la pantalla filtrada y no en la agenda es peor que no tenerlo: la cita se ve
+     * sin validar segun por donde se mire. `validada` es una columna normal, asi que puede
+     * viajar con el resto y salir bien en todas.
+     */
+    @JsonProperty("validada")
+    private Boolean validada = false;
+
+    @JsonProperty("validada_por_nombre")
+    private String validadaPorNombre;
 }

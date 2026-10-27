@@ -78,6 +78,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PUEDE_EXPORTAR"));
                 }
 
+                // Y quien puede dar el visto bueno a una cita (doble validacion).
+                Boolean puedeValidar = claims.get("puedeValidarCita", Boolean.class);
+                if (Boolean.TRUE.equals(puedeValidar)) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_VALIDAR_CITA"));
+                }
+
                 // Tambien por ROL: quien puede corregir una atencion ya registrada.
                 Boolean puedeCorregir = claims.get("puedeCorregirAtencion", Boolean.class);
                 if (Boolean.TRUE.equals(puedeCorregir)) {

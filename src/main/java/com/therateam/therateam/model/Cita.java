@@ -97,6 +97,23 @@ public class Cita {
     /** Clasificación de la cita: FIJO (horario recurrente permanente), EVENTUAL (ocasional) o SOLO_HOY (única vez, sin intención de repetirse). */
     private String tipoRecurrencia;
 
+    /**
+     * Doble validacion: alguien distinto de quien la cargo revisa la cita y da el visto bueno.
+     *
+     * El sello caduca solo: si cambia algo de lo que se valido (fecha, terapeuta, tipo, precio,
+     * estado, pago), vuelve a false. Un visto bueno que sobrevive al cambio de lo que sellaba
+     * certifica unos datos que ya no existen, y es peor que no tener sello.
+     */
+    @Column(nullable = false)
+    private Boolean validada = false;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "validada_por")
+    private Usuario validadaPor;
+
+    @Column(name = "validada_en")
+    private LocalDateTime validadaEn;
+
     // Autorreferencia: apunta a la cita anterior si es reprogramación
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "reprogramacion_de")
@@ -134,6 +151,7 @@ public class Cita {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();
         if (recordatorioEnviado == null) recordatorioEnviado = false;
         if (tipoRecurrencia == null) tipoRecurrencia = "EVENTUAL";
+        if (validada == null) validada = false;
         if (montoPagado == null) montoPagado = BigDecimal.ZERO;
         usuarioCreacionId = SecurityUtils.currentUserId();
         usuarioModificacionId = usuarioCreacionId;

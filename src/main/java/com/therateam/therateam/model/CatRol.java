@@ -54,6 +54,17 @@ public class CatRol {
     private Boolean puedeEditarHoraCorte;
 
     /**
+     * Si el rol puede dar el visto bueno a una cita (doble validacion).
+     *
+     * Aparte del "editar" del modulo Citas a proposito, y por el motivo que hace util la doble
+     * validacion: quien carga la cita no deberia ser quien la aprueba. Si este permiso fuera
+     * parte de editar, cualquiera que puede cargar podria validarse a si mismo y el segundo par
+     * de ojos no existiria.
+     */
+    @Column(name = "puede_validar_cita")
+    private Boolean puedeValidarCita;
+
+    /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
      * lectura/navegación; crear/editar/eliminar son flags independientes (las lecturas de datos
      * de referencia cross-módulo siguen abiertas a cualquier autenticado, ver SecurityConfig).

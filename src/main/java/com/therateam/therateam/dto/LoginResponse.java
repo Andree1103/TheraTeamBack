@@ -27,4 +27,6 @@ public class LoginResponse {
     private boolean puedeVerSaldoInicial;
     /** Viene del ROL: si es false, no se puede cambiar la hora de corte de la caja. */
     private boolean puedeEditarHoraCorte;
+    /** Viene del ROL: si es false, el front no ofrece dar el visto bueno a una cita. */
+    private boolean puedeValidarCita;
 }

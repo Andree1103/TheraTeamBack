@@ -56,6 +56,14 @@ public final class SecurityUtils {
                 .anyMatch(a -> "PUEDE_CORREGIR_ATENCION".equals(a.getAuthority()));
     }
 
+    /** true solo si el rol del usuario puede dar el visto bueno a una cita. */
+    public static boolean puedeValidarCita() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> "PUEDE_VALIDAR_CITA".equals(a.getAuthority()));
+    }
+
     /** true solo si el rol del usuario puede ver el saldo inicial de la caja. */
     public static boolean puedeVerSaldoInicial() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
