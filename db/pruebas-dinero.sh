@@ -140,7 +140,9 @@ read C9 P9 <<< $(nueva_cita 50); ponerSaldo $P9 0
 post /api/pagos "{\"paciente\":{\"id\":$P9},\"metodo\":{\"id\":1},\"montoRecibido\":70}" >/dev/null
 PID=$(q "SELECT max(id) FROM pagos WHERE paciente_id=$P9")
 check "saldo tras el adelanto" "70.00" "$(saldo $P9)"
-curl -s -o /dev/null -X DELETE "$API/api/pagos/$PID" -H "Authorization: Bearer $TOK"
+# El motivo es obligatorio desde que borrar un pago exige decir por que: sin el, el DELETE
+# se rechaza y la bateria veia el saldo intacto como si el sistema no lo hubiera revertido.
+curl -s -o /dev/null -X DELETE "$API/api/pagos/$PID?motivo=bateria+de+pruebas" -H "Authorization: Bearer $TOK"
 check "saldo tras eliminarlo" "0.00" "$(saldo $P9)"
 
 echo "== 11. Borrar un paquete: se puede si no hay historia, no si la hay =="

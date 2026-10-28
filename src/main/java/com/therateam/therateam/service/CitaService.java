@@ -611,26 +611,88 @@ public class CitaService {
     /**
      * Anula TODAS las citas pendientes (no ASISTIDA, no ya canceladas) de un paquete, con el mismo
      * criterio de devolución que {@link #anular}. Las sesiones ya atendidas no se tocan.
+     *
+     * Y después deja el paquete del tamaño que de verdad tuvo, que es la mitad que faltaba.
+     *
+     * La deuda del paciente se lee como «lo que vale el paquete menos lo que se le cobró», y
+     * devolverle el dinero baja lo cobrado. Si el paquete siguiera diciendo que son diez
+     * sesiones, al paciente le quedaría una deuda por el importe exacto que se le acaba de
+     * devolver: se le devolvían S/ 440 y el sistema pasaba a decir que debía S/ 440. Un
+     * reembolso no puede crear una deuda.
      */
     @Transactional
     public List<CitaDTO> anularPaquete(Long tratamientoId, String tipoDevolucion, Long metodoId, String motivo) {
         String motivoLimpio = exigirMotivo(motivo, "anulación");
-        if (!tratamientoRepository.existsById(tratamientoId)) {
-            throw new IllegalArgumentException("Paquete no encontrado: " + tratamientoId);
-        }
+        Tratamiento tratamiento = tratamientoRepository.findById(tratamientoId)
+                .orElseThrow(() -> new IllegalArgumentException("Paquete no encontrado: " + tratamientoId));
         List<CitaDTO> resultado = new java.util.ArrayList<>();
+        int sesionesQueSiguenEnPie = 0;
         for (Sesion s : sesionRepository.findByTratamientoIdWithCita(tratamientoId)) {
             Cita cita = s.getCitaActiva();
+            // Sesión que nunca llegó a agendarse —su horario chocaba, por ejemplo—: no queda en
+            // pie, y lo que se cobró por ella sale abajo, con el resto del sobrante.
             if (cita == null) continue;
             String estadoActual = cita.getEstado() != null ? cita.getEstado().getKey() : null;
-            if ("ASISTIDA".equals(estadoActual) || esCancelado(estadoActual)) continue;
+            // La que ya se dio se cobra y cuenta. La ya anulada no vuelve: su dinero salió en su
+            // momento, y el paquete se está cerrando, así que nadie la va a reprogramar.
+            if ("ASISTIDA".equals(estadoActual)) { sesionesQueSiguenEnPie++; continue; }
+            if (esCancelado(estadoActual)) continue;
 
             anularCitaInterna(cita, tipoDevolucion, metodoId, motivoLimpio);
             Cita saved = citaRepository.save(cita);
             sesionRepository.desvincularCitaActiva(cita.getId());
             resultado.add(toDTO(saved));
         }
+        cerrarPaqueteAnulado(tratamiento, sesionesQueSiguenEnPie, tipoDevolucion, metodoId);
         return resultado;
+    }
+
+    /**
+     * Deja el paquete anulado en lo que acabó siendo: las sesiones que se dieron, y nada más.
+     *
+     * Lo que sobre se devuelve. El sobrante es lo cobrado por encima de lo que el paquete acabó
+     * valiendo, y aparece siempre que no toda sesión cobrada llegó a tener cita. El caso que lo
+     * destapó: un paquete de diez sesiones, cobrado entero, del que solo se pudieron agendar
+     * ocho —las otras dos chocaban con citas que el paciente ya tenía—. Al anularlo se devolvían
+     * las ocho y las dos restantes se quedaban cobradas para siempre, sin cita a la que
+     * pertenecer y sin nadie que las reclamara.
+     *
+     * Sale por el mismo camino que eligió quien anuló: en dinero o como saldo a favor.
+     */
+    private void cerrarPaqueteAnulado(Tratamiento t, int sesionesQueSiguenEnPie,
+                                      String tipoDevolucion, Long metodoId) {
+        // Nunca por debajo de las atendidas que el paquete ya tenía contadas: «sesiones
+        // pendientes» se calcula restando las dos, y dejarlo en negativo diría un disparate.
+        int atendidas = t.getSesionesAtendidas() != null ? t.getSesionesAtendidas() : 0;
+        t.setTotalSesiones(Math.max(sesionesQueSiguenEnPie, atendidas));
+
+        BigDecimal precio = t.getPrecioPorSesion() != null ? t.getPrecioPorSesion() : BigDecimal.ZERO;
+        BigDecimal loQueVale = precio.multiply(BigDecimal.valueOf(t.getTotalSesiones()));
+        BigDecimal cobrado = t.getTotalCobrado() != null ? t.getTotalCobrado() : BigDecimal.ZERO;
+        BigDecimal sobra = cobrado.subtract(loQueVale);
+
+        if (sobra.compareTo(BigDecimal.ZERO) > 0) {
+            t.setTotalCobrado(cobrado.subtract(sobra));
+            String concepto = "Devolución por anulación del paquete " + t.getNombre()
+                    + " — sesiones cobradas que no se llegaron a dar";
+            if ("DINERO".equalsIgnoreCase(tipoDevolucion)) {
+                Long metodoResuelto = metodoId != null ? metodoId
+                        : pagoService.metodoMasRecienteDelTratamiento(t.getId());
+                pagoService.crearDevolucionManual(t.getPaciente(), t, null, sobra, metodoResuelto, concepto);
+            } else {
+                // Mismo criterio que en una sesión suelta: si al paquete nunca entró dinero de
+                // verdad, no se le regala crédito al paciente — pero la deuda se libera igual.
+                boolean loPagoElPaciente = pagoService.elPaqueteRecibioDinero(t.getId());
+                if (loPagoElPaciente) sumarSaldoAFavor(t.getPaciente(), sobra, concepto, null);
+                libro.anulacionAFavor(t.getPaciente() != null ? t.getPaciente().getId() : null,
+                        null, sobra, loPagoElPaciente ? sobra : BigDecimal.ZERO,
+                        null, t.getId(), concepto);
+            }
+        }
+
+        // El paquete se acabó: que lo diga, en vez de seguir figurando Activo sin sesiones.
+        catEstadoTratamientoRepository.findByKey("CANCELADO").ifPresent(t::setEstado);
+        tratamientoRepository.save(t);
     }
 
     private void validarAnulable(Cita cita) {

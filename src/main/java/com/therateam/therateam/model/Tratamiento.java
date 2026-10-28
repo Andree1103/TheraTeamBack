@@ -36,8 +36,14 @@ public class Tratamiento {
 
     @NotBlank(message = "El nombre del paquete es obligatorio")
     private String nombre;
+    /**
+     * Cero es un valor válido aquí: al anular un paquete se queda sin sesiones por dar, y el
+     * monto total —que se calcula multiplicando por el precio— tiene que bajar con él. Que un
+     * paquete NUEVO traiga al menos una se exige en TratamientoService, que es el único sitio
+     * que sabe si está naciendo o si lo están cerrando.
+     */
     @NotNull(message = "El total de sesiones es obligatorio")
-    @Min(value = 1, message = "El total de sesiones debe ser al menos 1")
+    @Min(value = 0, message = "El total de sesiones no puede ser negativo")
     private Integer totalSesiones;
     @NotNull(message = "El precio por sesión es obligatorio")
     @DecimalMin(value = "0.0", inclusive = false, message = "El precio por sesión debe ser mayor a 0")

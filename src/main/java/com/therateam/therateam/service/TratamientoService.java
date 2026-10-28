@@ -90,7 +90,21 @@ public class TratamientoService {
     public Tratamiento save(Tratamiento t) {
         // Un paquete no puede NACER completado: no se ha dado ni una sesion.
         exigirQueCompletadoTengaSentido(t, 0);
+        exigirAlMenosUnaSesion(t);
         return repository.save(t);
+    }
+
+    /**
+     * Un paquete que se crea o se edita a mano tiene que tener sesiones.
+     *
+     * La regla vivia en la entidad (@Min(1)) hasta que hizo falta que un paquete ANULADO pudiera
+     * quedarse en cero —ver CitaService.anularPaquete—, y una anotacion no distingue entre un
+     * paquete naciendo y uno cerrandose. Aqui si: por aqui solo pasa lo que manda el formulario.
+     */
+    private static void exigirAlMenosUnaSesion(Tratamiento t) {
+        if (t.getTotalSesiones() == null || t.getTotalSesiones() < 1) {
+            throw new IllegalArgumentException("El paquete debe tener al menos una sesion.");
+        }
     }
 
     /**
@@ -236,6 +250,7 @@ public class TratamientoService {
     public Optional<Tratamiento> update(Long id, Tratamiento data) {
         return repository.findById(id).map(e -> {
             exigirQueCompletadoTengaSentido(data, sesionesAtendidas(id));
+            exigirAlMenosUnaSesion(data);
             e.setPaciente(data.getPaciente());
             e.setTerapeuta(data.getTerapeuta());
             e.setTipoTerapia(data.getTipoTerapia());
