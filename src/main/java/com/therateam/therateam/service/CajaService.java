@@ -150,6 +150,12 @@ public class CajaService {
         List<com.therateam.therateam.dto.CobroAdicionalDTO> cobrosAdicionales =
                 pagoRepository.cobrosAdicionalesEntreFechas(inicioRango, finRango);
 
+        // Lo que salio del cajon por devoluciones. Se calcula en vivo, igual que los ingresos.
+        BigDecimal devoluciones = pagoRepository.sumDevolucionesEntreFechas(inicioRango, finRango);
+        if (devoluciones == null) devoluciones = BigDecimal.ZERO;
+        List<com.therateam.therateam.dto.CobroAdicionalDTO> detalleDevoluciones =
+                pagoRepository.devolucionesEntreFechas(inicioRango, finRango);
+
         BigDecimal saldoInicial = cierreCajaRepository.findAnteriores(fecha, turno, PageRequest.of(0, 1))
                 .stream().findFirst().map(CierreCaja::getSaldoFinal).orElse(BigDecimal.ZERO);
 
@@ -161,11 +167,12 @@ public class CajaService {
                 .map(c -> c.getCerradoPor() != null ? c.getCerradoPor().getNombre() + " " + c.getCerradoPor().getApellido() : null)
                 .orElse(null);
 
-        BigDecimal saldoFinal = saldoInicial.add(totalIngresos).subtract(egresos);
+        BigDecimal saldoFinal = saldoInicial.add(totalIngresos).subtract(egresos).subtract(devoluciones);
 
         return new CajaResumenDTO(fecha, turno, corte.format(DateTimeFormatter.ofPattern("HH:mm")),
                 saldoInicial, ingresosPorMetodo, ingresosPorConcepto, ventasPorProducto,
                 cobrosAdicionales, fueraDeCaja, totalFueraDeCaja, totalIngresos,
+                devoluciones, detalleDevoluciones,
                 egresos, comentario, saldoFinal, cerrado, cerradoPorNombre);
     }
 
@@ -201,9 +208,13 @@ public class CajaService {
         cierre.setTotalIngresos(resumenPrevio.getTotalIngresos());
         cierre.setEgresos(req.getEgresos() != null ? req.getEgresos() : BigDecimal.ZERO);
         cierre.setComentario(req.getComentario());
+        // Lo devuelto tambien salio del cajon: se resta aqui igual que en el resumen, para que
+        // el saldo que queda firmado sea el mismo que la pantalla enseñaba al firmarlo.
         cierre.setSaldoFinal(resumenPrevio.getSaldoInicial()
                 .add(resumenPrevio.getTotalIngresos())
-                .subtract(cierre.getEgresos()));
+                .subtract(cierre.getEgresos())
+                .subtract(resumenPrevio.getDevoluciones() != null
+                        ? resumenPrevio.getDevoluciones() : BigDecimal.ZERO));
 
         cierreCajaRepository.save(cierre);
         return resumenDia(fecha, turno);

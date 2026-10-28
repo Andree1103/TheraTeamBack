@@ -48,6 +48,7 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         LEFT JOIN pg.metodo m
         WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
           AND pg.trajoDinero = false
+          AND pg.esDevolucion = false
         GROUP BY m.id, m.nombre
         HAVING SUM(CASE WHEN pg.esDevolucion = true THEN -pg.montoRecibido ELSE pg.montoRecibido END) <> 0
         """)
@@ -120,6 +121,46 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
         ORDER BY pg.fechaPago
         """)
     List<com.therateam.therateam.dto.CobroAdicionalDTO> cobrosAdicionalesEntreFechas(
+            @Param("inicioDia") LocalDateTime inicioDia, @Param("finDia") LocalDateTime finDia);
+
+    /**
+     * Lo devuelto en el turno. Es dinero que SALIO del cajon, asi que resta del saldo final.
+     *
+     * Va aparte de los ingresos a proposito. El arqueo del dia es lo que se cobro ese dia y no
+     * se mezcla con reintegros de cobros viejos —esa fue la decision del negocio cuando las
+     * devoluciones pasaron a tener su propio metodo—, pero eso no las saca del cajon: el dinero
+     * se entrego igual, y el cierre tiene que cuadrar contra lo que queda. Antes solo aparecian
+     * en el bloque "fuera de caja", mirando sin restar, y el saldo final del turno sobraba por
+     * exactamente lo devuelto.
+     *
+     * El libro ya lo cuenta asi: cada devolucion escribe su CAJA_SALE (ver LibroService). Esto
+     * pone el arqueo de acuerdo con el libro, no inventa un criterio nuevo.
+     */
+    @Query("""
+        SELECT COALESCE(SUM(pg.montoRecibido), 0)
+        FROM Pago pg
+        WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND pg.esDevolucion = true
+        """)
+    BigDecimal sumDevolucionesEntreFechas(@Param("inicioDia") LocalDateTime inicioDia,
+                                           @Param("finDia") LocalDateTime finDia);
+
+    /** El detalle de esa salida: a quien se le devolvio y por que. Mismo criterio que la suma. */
+    @Query("""
+        SELECT new com.therateam.therateam.dto.CobroAdicionalDTO(
+            pg.id, pg.fechaPago,
+            CONCAT(pac.nombre, ' ', pac.apellido),
+            COALESCE(pg.concepto, pg.notas),
+            m.nombre,
+            pg.montoRecibido)
+        FROM Pago pg
+        LEFT JOIN pg.paciente pac
+        LEFT JOIN pg.metodo m
+        WHERE pg.fechaPago >= :inicioDia AND pg.fechaPago < :finDia
+          AND pg.esDevolucion = true
+        ORDER BY pg.fechaPago
+        """)
+    List<com.therateam.therateam.dto.CobroAdicionalDTO> devolucionesEntreFechas(
             @Param("inicioDia") LocalDateTime inicioDia, @Param("finDia") LocalDateTime finDia);
 
     /**

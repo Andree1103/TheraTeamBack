@@ -39,6 +39,16 @@ public class CajaResumenDTO {
     private List<IngresoMetodo> ingresosFueraDeCaja;
     private BigDecimal totalFueraDeCaja;
     private BigDecimal totalIngresos;
+    /**
+     * Lo devuelto en el turno: dinero que salio del cajon y resta del saldo final.
+     *
+     * No esta restado dentro de totalIngresos a proposito — los ingresos del turno siguen
+     * siendo lo que se cobro, sin mezclar reintegros de cobros de otros dias. Lo devuelto es
+     * una salida, y como tal va junto a los egresos.
+     */
+    private BigDecimal devoluciones;
+    /** A quien se le devolvio y por que — el detalle detras de la cifra de arriba. */
+    private List<CobroAdicionalDTO> detalleDevoluciones;
     private BigDecimal egresos;
     private String comentario;
     private BigDecimal saldoFinal;
