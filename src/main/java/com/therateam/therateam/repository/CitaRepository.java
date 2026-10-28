@@ -38,6 +38,10 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
     List<Cita> findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
             Long pacienteId, LocalDateTime fechaFin, LocalDateTime fechaInicio, List<String> estadoKeys);
 
+    /** Cuantas filas de aqui cuelgan de este paciente. Se usa antes de borrarlo:
+     *  la FK no tiene ON DELETE, asi que una sola basta para que el borrado falle. */
+    long countByPacienteId(Long pacienteId);
+
     /**
      * Por cada cita: quien la edito por ultima vez y quien registro su atencion.
      *

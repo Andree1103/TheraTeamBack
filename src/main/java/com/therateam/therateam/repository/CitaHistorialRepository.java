@@ -6,4 +6,8 @@ import java.util.List;
 @Repository
 public interface CitaHistorialRepository extends JpaRepository<CitaHistorial, Long> {
     List<CitaHistorial> findByCitaIdOrderByCreatedAtAsc(Long citaId);
+
+    /** Cuantas anotaciones del historial dejo este usuario. Se mira antes de borrar la
+     *  cuenta de un paciente: si toco algo, la cuenta se queda. */
+    long countByUsuarioId(Long usuarioId);
 }

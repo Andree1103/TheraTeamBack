@@ -4,9 +4,15 @@ import com.therateam.therateam.config.SecurityUtils;
 import com.therateam.therateam.model.CatRol;
 import com.therateam.therateam.model.Paciente;
 import com.therateam.therateam.model.Usuario;
+import com.therateam.therateam.repository.AsientoRepository;
 import com.therateam.therateam.repository.CatRolRepository;
+import com.therateam.therateam.repository.CitaHistorialRepository;
+import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PacienteRepository;
+import com.therateam.therateam.repository.PagoRepository;
+import com.therateam.therateam.repository.SaldoMovimientoRepository;
 import com.therateam.therateam.repository.SedeRepository;
+import com.therateam.therateam.repository.TratamientoRepository;
 import com.therateam.therateam.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -29,6 +35,12 @@ public class PacienteService {
     private final CatRolRepository catRolRepository;
     private final SedeRepository sedeRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CitaRepository citaRepository;
+    private final PagoRepository pagoRepository;
+    private final TratamientoRepository tratamientoRepository;
+    private final SaldoMovimientoRepository saldoMovimientoRepository;
+    private final AsientoRepository asientoRepository;
+    private final CitaHistorialRepository citaHistorialRepository;
 
     public List<Paciente> findAll() {
         return repository.findAll();
@@ -188,9 +200,77 @@ public class PacienteService {
         return usuarioRepository.save(usuario);
     }
 
+    /**
+     * Borrar un paciente es para la ficha creada por error, no para el que ya tiene historia.
+     *
+     * Ninguna de las tablas que cuelgan del paciente —citas, pagos, paquetes, movimientos de
+     * saldo, asientos del libro— tiene ON DELETE: la base rechaza el borrado y hasta ahora eso
+     * salia a pantalla como "Error al eliminar el paciente", sin decir que lo impedia ni que
+     * hacer en su lugar. Y esta bien que lo rechace: esos registros son la caja y el libro de un
+     * dia que ya se cerro, no se pueden tirar porque alguien deje de venir. Lo que faltaba era
+     * decirlo. Para ese caso esta el estado Inactivo, que es lo que de verdad se quiere.
+     */
+    @Transactional
     public boolean delete(Long id) {
-        if (!repository.existsById(id)) return false;
+        Paciente paciente = repository.findById(id).orElse(null);
+        if (paciente == null) return false;
+
+        exigirQueNoTengaHistoria(paciente);
+
+        Usuario cuenta = paciente.getUsuario();
         repository.deleteById(id);
+        borrarCuentaDe(cuenta);
         return true;
+    }
+
+    private void exigirQueNoTengaHistoria(Paciente paciente) {
+        Long id = paciente.getId();
+
+        // Lo que la recepción reconoce de inmediato, porque lo ve en la ficha del paciente.
+        List<String> tiene = new java.util.ArrayList<>();
+        agregarSiHay(tiene, citaRepository.countByPacienteId(id), "cita", "citas");
+        agregarSiHay(tiene, pagoRepository.countByPacienteId(id), "pago", "pagos");
+        agregarSiHay(tiene, tratamientoRepository.countByPacienteId(id), "paquete", "paquetes");
+
+        // Y lo que cuelga por dentro. Casi siempre viene acompañado de un pago, y entonces
+        // nombrarlo solo añade ruido; se dice únicamente si es lo único que queda, para que el
+        // mensaje nunca salga vacío y vuelva a caer en el error crudo de la base.
+        if (tiene.isEmpty()) {
+            agregarSiHay(tiene, saldoMovimientoRepository.countByPacienteId(id),
+                    "movimiento de saldo a favor", "movimientos de saldo a favor");
+            agregarSiHay(tiene, asientoRepository.countByPacienteId(id),
+                    "apunte en el libro de movimientos", "apuntes en el libro de movimientos");
+        }
+        if (tiene.isEmpty()) return;
+
+        throw new IllegalArgumentException(
+                "No se puede eliminar a " + paciente.getNombre() + " " + paciente.getApellido()
+                + ": tiene " + enumerar(tiene) + ". Esa historia es parte de la caja y del libro, "
+                + "y borrarla descuadraría los dos. Si ya no viene, ponlo como Inactivo "
+                + "(Editar → Estado).");
+    }
+
+    private static void agregarSiHay(List<String> destino, long cuantos, String singular, String plural) {
+        if (cuantos > 0) destino.add(cuantos + " " + (cuantos == 1 ? singular : plural));
+    }
+
+    /** "3 citas, 2 pagos y 1 paquete" — como se lee en voz alta, no separado por comas hasta el final. */
+    private static String enumerar(List<String> partes) {
+        if (partes.size() == 1) return partes.get(0);
+        return String.join(", ", partes.subList(0, partes.size() - 1)) + " y " + partes.get(partes.size() - 1);
+    }
+
+    /**
+     * La cuenta de acceso se crea con el paciente, asi que se va con el.
+     *
+     * Si se quedara, su correo —que sale del DNI— seguiria ocupado, y volver a dar de alta a la
+     * misma persona fallaria con "Ya existe una cuenta con ese correo" sin que nadie vea de
+     * donde sale. Solo se borra si no dejo rastro en el historial de citas; si lo dejo, la
+     * cuenta se queda para que ese rastro siga teniendo nombre.
+     */
+    private void borrarCuentaDe(Usuario cuenta) {
+        if (cuenta == null) return;
+        if (citaHistorialRepository.countByUsuarioId(cuenta.getId()) > 0) return;
+        usuarioRepository.deleteById(cuenta.getId());
     }
 }

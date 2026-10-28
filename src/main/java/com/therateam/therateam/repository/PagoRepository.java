@@ -16,6 +16,10 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     List<Pago> findByPacienteId(Long pacienteId);
     List<Pago> findByCitaId(Long citaId);
 
+    /** Cuantas filas de aqui cuelgan de este paciente. Se usa antes de borrarlo:
+     *  la FK no tiene ON DELETE, asi que una sola basta para que el borrado falle. */
+    long countByPacienteId(Long pacienteId);
+
     /**
      * Ingresos del día agrupados por método de pago — para el cierre de caja. Una devolución
      * (esDevolucion=true) es plata que SALIÓ, así que resta en vez de sumar — de lo contrario

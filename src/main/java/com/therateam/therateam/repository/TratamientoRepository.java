@@ -19,6 +19,10 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
     Page<Tratamiento> findByTerapeutaId(Long terapeutaId, Pageable pageable);
     List<Tratamiento> findByPacienteIdAndTerapeutaIdAndTipoTerapiaId(Long pacienteId, Long terapeutaId, Long tipoTerapiaId);
 
+    /** Cuantas filas de aqui cuelgan de este paciente. Se usa antes de borrarlo:
+     *  la FK no tiene ON DELETE, asi que una sola basta para que el borrado falle. */
+    long countByPacienteId(Long pacienteId);
+
     /**
      * Cada parámetro nulo/vacío no restringe — filtros por campo separado (paciente, terapeuta, tipo, estado).
      * `saldoAFavor` se lee del PACIENTE, no del paquete — es un crédito suyo, no de este paquete en

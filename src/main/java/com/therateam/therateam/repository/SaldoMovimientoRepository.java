@@ -13,6 +13,10 @@ import java.util.List;
 @Repository
 public interface SaldoMovimientoRepository extends JpaRepository<SaldoMovimiento, Long> {
 
+    /** Cuantas filas de aqui cuelgan de este paciente. Se usa antes de borrarlo:
+     *  la FK no tiene ON DELETE, asi que una sola basta para que el borrado falle. */
+    long countByPacienteId(Long pacienteId);
+
     /** Historial de un paciente, del movimiento más reciente al más antiguo. */
     @Query("""
         SELECT new com.therateam.therateam.dto.SaldoMovimientoDTO(
