@@ -83,7 +83,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
             ac.conDevolucion, ac.montoDevuelto, ac.createdAt,
             c.validada,
-            (SELECT CONCAT(uv.nombre, ' ', uv.apellido) FROM Usuario uv WHERE uv.id = c.validadaPor.id)
+            (SELECT CONCAT(uv.nombre, ' ', uv.apellido) FROM Usuario uv WHERE uv.id = c.validadaPor.id),
+            c.validadaEn
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -125,7 +126,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
             ac.conDevolucion, ac.montoDevuelto, ac.createdAt,
             c.validada,
-            (SELECT CONCAT(uv.nombre, ' ', uv.apellido) FROM Usuario uv WHERE uv.id = c.validadaPor.id)
+            (SELECT CONCAT(uv.nombre, ' ', uv.apellido) FROM Usuario uv WHERE uv.id = c.validadaPor.id),
+            c.validadaEn
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -200,7 +202,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
             ac.conDevolucion, ac.montoDevuelto, ac.createdAt,
             c.validada,
-            (SELECT CONCAT(uv.nombre, ' ', uv.apellido) FROM Usuario uv WHERE uv.id = c.validadaPor.id)
+            (SELECT CONCAT(uv.nombre, ' ', uv.apellido) FROM Usuario uv WHERE uv.id = c.validadaPor.id),
+            c.validadaEn
         )
         FROM Cita c
         LEFT JOIN c.sesion s
@@ -262,7 +265,8 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
             (SELECT MIN(rn.id) FROM Cita rn WHERE rn.reprogramacionDe = c AND rn.eliminado = false),
             ac.conDevolucion, ac.montoDevuelto, ac.createdAt,
             c.validada,
-            (SELECT CONCAT(uv.nombre, ' ', uv.apellido) FROM Usuario uv WHERE uv.id = c.validadaPor.id)
+            (SELECT CONCAT(uv.nombre, ' ', uv.apellido) FROM Usuario uv WHERE uv.id = c.validadaPor.id),
+            c.validadaEn
         )
         FROM Cita c
         LEFT JOIN c.sesion s

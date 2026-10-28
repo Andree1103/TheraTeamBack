@@ -27,9 +27,10 @@ public class CitaDTO {
                     String usuarioCreacionNombre, String motivoEstado, Long reprogramacionDe,
                     Long reprogramadaEn, Boolean conDevolucion, java.math.BigDecimal montoDevuelto,
                     LocalDateTime fechaRegistro,
-                    Boolean validada, String validadaPorNombre) {
+                    Boolean validada, String validadaPorNombre, LocalDateTime validadaEn) {
         this.validada = Boolean.TRUE.equals(validada);
         this.validadaPorNombre = validadaPorNombre;
+        this.validadaEn = validadaEn;
         this.conDevolucion = conDevolucion;
         this.montoDevuelto = montoDevuelto;
         this.fechaRegistro = fechaRegistro;
@@ -237,4 +238,8 @@ public class CitaDTO {
 
     @JsonProperty("validada_por_nombre")
     private String validadaPorNombre;
+
+    /** Cuando se dio el visto bueno. Sin esto, "quien aprobo" no dice si fue antes o despues. */
+    @JsonProperty("validada_en")
+    private LocalDateTime validadaEn;
 }

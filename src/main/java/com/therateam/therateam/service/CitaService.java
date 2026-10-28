@@ -1500,6 +1500,7 @@ public class CitaService {
         dto.setValidada(Boolean.TRUE.equals(c.getValidada()));
         dto.setValidadaPorNombre(c.getValidadaPor() != null
                 ? (c.getValidadaPor().getNombre() + " " + c.getValidadaPor().getApellido()).trim() : null);
+        dto.setValidadaEn(c.getValidadaEn());
         dto.setMotivoEstado(c.getMotivoEstado());
         if (c.getReprogramacionDe() != null) dto.setReprogramacionDe(c.getReprogramacionDe().getId());
         dto.setPrecio(c.getPrecio());
