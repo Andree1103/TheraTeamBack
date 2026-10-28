@@ -201,6 +201,21 @@ public class PacienteService {
     }
 
     /**
+     * Dar de baja al paciente, o volver a darlo de alta.
+     *
+     * Es lo que de verdad se quiere casi siempre que alguien pulsa Eliminar: el paciente dejo de
+     * venir, no hay que borrar su historia. Inactivo lo saca de los listados y de las busquedas
+     * con las que se trabaja —agendar, cobrar, abrir un paquete—, y su ficha sigue entera.
+     */
+    @Transactional
+    public Optional<Paciente> cambiarActivo(Long id, boolean activo) {
+        return repository.findById(id).map(p -> {
+            p.setActivo(activo);
+            return repository.save(p);
+        });
+    }
+
+    /**
      * Borrar un paciente es para la ficha creada por error, no para el que ya tiene historia.
      *
      * Ninguna de las tablas que cuelgan del paciente —citas, pagos, paquetes, movimientos de
@@ -246,8 +261,8 @@ public class PacienteService {
         throw new IllegalArgumentException(
                 "No se puede eliminar a " + paciente.getNombre() + " " + paciente.getApellido()
                 + ": tiene " + enumerar(tiene) + ". Esa historia es parte de la caja y del libro, "
-                + "y borrarla descuadraría los dos. Si ya no viene, ponlo como Inactivo "
-                + "(Editar → Estado).");
+                + "y borrarla descuadraría los dos. Si ya no viene, dale de baja: su ficha se "
+                + "queda entera, pero sale de los listados y de las búsquedas.");
     }
 
     private static void agregarSiHay(List<String> destino, long cuantos, String singular, String plural) {

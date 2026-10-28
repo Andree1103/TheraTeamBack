@@ -163,6 +163,24 @@ public class PacienteController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /**
+     * Dar de baja o volver a dar de alta, sin tocar nada mas.
+     *
+     * Va aparte del PUT porque la pantalla lo usa desde el modal de eliminar, donde no tiene la
+     * ficha cargada: con el PUT habria que leerla entera y devolverla, y cualquier campo que el
+     * formulario no conozca se perderia por el camino.
+     *
+     * Pide permiso de ELIMINAR y no de EDITAR: es la salida que se le ofrece a quien venia a
+     * borrar al paciente y no puede, no un cambio mas del formulario.
+     */
+    @PreAuthorize("hasAuthority('MODULO_PACIENTES_ELIMINAR')")
+    @PatchMapping("/{id}/activo")
+    public ResponseEntity<Paciente> cambiarActivo(@PathVariable Long id, @RequestParam boolean activo) {
+        return service.cambiarActivo(id, activo)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @PreAuthorize("hasAuthority('MODULO_PACIENTES_ELIMINAR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
