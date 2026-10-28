@@ -163,6 +163,22 @@ public class PacienteController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /** Lo que hace falta para bajar un saldo: hasta cuanto, por que, y si el dinero salio. */
+    public record AjusteDeSaldo(java.math.BigDecimal nuevoSaldo, String tipo, Long metodoId, String motivo) {}
+
+    /**
+     * Bajar el saldo a favor de un paciente, hasta cero si hace falta.
+     *
+     * Va con permiso de PAGOS y no de PACIENTES: esto mueve dinero —puede sacarlo del cajon— y
+     * quien lo hace es el mismo que cobra, desde Adelantos.
+     */
+    @PreAuthorize("hasAuthority('MODULO_PAGOS_EDITAR')")
+    @PostMapping("/{id}/ajustar-saldo")
+    public ResponseEntity<Paciente> ajustarSaldo(@PathVariable Long id, @RequestBody AjusteDeSaldo req) {
+        return ResponseEntity.ok(service.ajustarSaldoAFavor(
+                id, req.nuevoSaldo(), req.tipo(), req.metodoId(), req.motivo()));
+    }
+
     /**
      * Dar de baja o volver a dar de alta, sin tocar nada mas.
      *

@@ -732,6 +732,15 @@ public class PagoService {
     @Transactional
     public Pago crearDevolucionManual(Paciente paciente, Tratamiento tratamiento, Cita cita,
                                        BigDecimal monto, Long metodoId, String concepto) {
+        Pago guardada = grabarDevolucion(paciente, tratamiento, cita, monto, metodoId, concepto);
+        // Sin pago de origen: no consta de qué cobro salía. La devolución se anota igual.
+        libro.devolucion(guardada, null);
+        return guardada;
+    }
+
+    /** La fila de una devolución, sin anotarla en el libro: cada motivo la apunta a su manera. */
+    private Pago grabarDevolucion(Paciente paciente, Tratamiento tratamiento, Cita cita,
+                                  BigDecimal monto, Long metodoId, String concepto) {
         // El metodo que llega dice por DONDE salio el dinero; la fila se graba como "Devolucion"
         // para que no se confunda con un cobro ni entre en el arqueo del dia.
         CatMetodoPago porDondeSalio = metodoId != null ? catMetodoPagoRepository.findById(metodoId).orElse(null) : null;
@@ -757,9 +766,23 @@ public class PagoService {
         devolucion.setNotas(concepto + " — salió por: "
                 + (porDondeSalio != null && porDondeSalio.getNombre() != null
                    ? porDondeSalio.getNombre().trim() : "sin método registrado"));
-        Pago guardada = repository.save(devolucion);
-        // Sin pago de origen: no consta de qué cobro salía. La devolución se anota igual.
-        libro.devolucion(guardada, null);
+        return repository.save(devolucion);
+    }
+
+    /**
+     * Devolverle al paciente parte de su saldo a favor, en efectivo.
+     *
+     * La fila es la misma que la de cualquier devolución —es dinero que sale por el mostrador, y
+     * el arqueo del turno lo tiene que restar—, pero en el libro no se apunta igual: en una
+     * devolución corriente el dinero sale de una deuda que se cubrió, y aquí sale de un crédito
+     * que el paciente tenía guardado. Eso lo escribe LibroService.ajusteDeSaldo.
+     *
+     * El saldo en sí lo baja quien llama, que es el que sabe hasta dónde.
+     */
+    public Pago devolverSaldoAFavor(Paciente paciente, BigDecimal monto, Long metodoId, String concepto) {
+        Pago guardada = grabarDevolucion(paciente, null, null, monto, metodoId, concepto);
+        libro.ajusteDeSaldo(paciente != null ? paciente.getId() : null, monto, true,
+                metodoId, guardada.getId(), concepto);
         return guardada;
     }
 

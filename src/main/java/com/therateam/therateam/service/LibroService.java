@@ -122,6 +122,42 @@ public class LibroService {
     }
 
     /**
+     * Se le baja el saldo a favor a un paciente a mano.
+     *
+     * Son dos hechos distintos con la misma forma, y la diferencia esta en a donde fue el dinero:
+     *
+     *   Se le devolvio    CREDITO_USA  <->  CAJA_SALE          sale del cajon, el turno lo resta
+     *   Era un error      CREDITO_USA  <->  CONSTANCIA_LIBERA  no sale nada: se retira el
+     *                                                          reconocimiento que nunca tuvo
+     *                                                          dinero detras
+     *
+     * El CREDITO_USA es el que importa para el reconciliador: compara saldo_a_favor contra
+     * CREDITO_GENERA menos CREDITO_USA, asi que sin esta linea bajar el saldo a mano saldria
+     * como diferencia todos los dias.
+     *
+     * No se reutiliza devolucion(): esa pone DEUDA_LIBERA al otro lado —el dinero salia de una
+     * deuda cubierta— y aqui no se libera ninguna deuda, se consume un credito.
+     */
+    public void ajusteDeSaldo(Long pacienteId, BigDecimal importe, boolean salioDinero,
+                              Long metodoId, Long pagoId, String nota) {
+        BigDecimal total = nvl(importe);
+        if (total.signum() <= 0) return;
+        enSuPropiaTransaccion(() -> {
+            Asiento a = new Asiento();
+            a.setTipo(Asiento.Tipo.AJUSTE);
+            a.setFecha(LocalDateTime.now());
+            a.setPacienteId(pacienteId);
+            a.setPagoId(pagoId);
+            a.setUsuarioId(SecurityUtils.currentUserId());
+            a.setNota(nota);
+            a.linea(CREDITO_USA, total);
+            if (salioDinero) a.linea(CAJA_SALE, total, metodoId, null, null);
+            else             a.linea(CONSTANCIA_LIBERA, total);
+            guardar(a);
+        }, "ajuste del saldo del paciente #" + pacienteId);
+    }
+
+    /**
      * Una reprogramación: el dinero no se mueve, cambia la cita a la que se le atribuye.
      *
      * Al reprogramar, los pagos pasan a la cita nueva y la vieja queda en cero. El libro no se

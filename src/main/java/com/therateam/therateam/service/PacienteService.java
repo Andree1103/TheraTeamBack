@@ -14,6 +14,7 @@ import com.therateam.therateam.repository.SaldoMovimientoRepository;
 import com.therateam.therateam.repository.SedeRepository;
 import com.therateam.therateam.repository.TratamientoRepository;
 import com.therateam.therateam.repository.UsuarioRepository;
+import com.therateam.therateam.model.Pago;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.List;
@@ -41,6 +43,9 @@ public class PacienteService {
     private final SaldoMovimientoRepository saldoMovimientoRepository;
     private final AsientoRepository asientoRepository;
     private final CitaHistorialRepository citaHistorialRepository;
+    private final PagoService pagoService;
+    private final SaldoMovimientoService saldoMovimientoService;
+    private final LibroService libro;
 
     public List<Paciente> findAll() {
         return repository.findAll();
@@ -198,6 +203,68 @@ public class PacienteService {
         usuario.setCitasPuedeCrear(true);
         sedeRepository.findFirstByActivoTrueOrderByIdAsc().ifPresent(usuario::setSede);
         return usuarioRepository.save(usuario);
+    }
+
+    /**
+     * Bajar a mano el saldo a favor de un paciente, hasta cero si hace falta.
+     *
+     * Hasta ahora el saldo solo bajaba gastandolo. El que dejaba de venir con S/ 40 encima se
+     * quedaba con ellos para siempre, y los centimos de redondeo que nadie puede gastar se
+     * quedaban figurando en Adelantos sin manera de quitarlos.
+     *
+     * Son dos hechos distintos y el que ajusta tiene que decir cual:
+     *
+     *   DEVOLUCION  se le entrego el dinero. Queda la fila de devolucion, y por tanto sale del
+     *               arqueo del turno igual que cualquier otra.
+     *   CORRECCION  el saldo estaba mal (carga inicial, redondeo). No se mueve un sol: solo se
+     *               corrige el numero, con su motivo.
+     *
+     * Solo hacia abajo. Subirlo es meter dinero, y eso tiene su propia puerta —"Agregar saldo a
+     * favor"—, que graba el cobro y lo hace entrar por caja. Dejar que esta subiera el numero
+     * seria regalar credito sin que entrara nada.
+     */
+    @Transactional
+    public Paciente ajustarSaldoAFavor(Long id, BigDecimal nuevoSaldo, String tipo,
+                                       Long metodoId, String motivo) {
+        String porque = motivo == null ? "" : motivo.trim();
+        if (porque.isEmpty()) {
+            throw new IllegalArgumentException("Escribe el motivo del ajuste: queda en el estado de cuenta del paciente.");
+        }
+        if (nuevoSaldo == null || nuevoSaldo.signum() < 0) {
+            throw new IllegalArgumentException("El nuevo saldo no puede ser negativo.");
+        }
+        boolean devolviendo = "DEVOLUCION".equalsIgnoreCase(tipo);
+        if (!devolviendo && !"CORRECCION".equalsIgnoreCase(tipo)) {
+            throw new IllegalArgumentException("Di si el dinero se devolvio o si se esta corrigiendo un saldo mal puesto.");
+        }
+
+        Paciente paciente = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado: " + id));
+        BigDecimal actual = paciente.getSaldoAFavor() != null ? paciente.getSaldoAFavor() : BigDecimal.ZERO;
+        if (nuevoSaldo.compareTo(actual) > 0) {
+            throw new IllegalArgumentException(
+                    "Desde aquí el saldo solo puede bajar. Tiene S/ " + actual
+                    + "; para subirlo usa «Agregar saldo a favor», que registra el dinero que entra.");
+        }
+        BigDecimal baja = actual.subtract(nuevoSaldo);
+        if (baja.signum() == 0) {
+            throw new IllegalArgumentException("El saldo ya es S/ " + actual + " — no hay nada que ajustar.");
+        }
+
+        paciente.setSaldoAFavor(nuevoSaldo);
+        Paciente guardado = repository.save(paciente);
+
+        String concepto = (devolviendo ? "Devolución del saldo a favor" : "Corrección del saldo a favor")
+                + " — motivo: " + porque;
+        Pago devolucion = null;
+        if (devolviendo) {
+            devolucion = pagoService.devolverSaldoAFavor(guardado, baja, metodoId, concepto);
+        } else {
+            libro.ajusteDeSaldo(guardado.getId(), baja, false, null, null, concepto);
+        }
+        // En el estado de cuenta se ve como lo que es: una salida, con su motivo y quién la hizo.
+        saldoMovimientoService.registrar(guardado, baja.negate(), nuevoSaldo, concepto, null, devolucion);
+        return guardado;
     }
 
     /**
