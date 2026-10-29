@@ -128,6 +128,25 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
             @Param("inicioDia") LocalDateTime inicioDia, @Param("finDia") LocalDateTime finDia);
 
     /**
+     * Lo cobrado en un rango, y cuantos cobros fueron. Para el Dashboard.
+     *
+     * Antes la pantalla se traia los pagos y los sumaba en el navegador, pidiendo "los primeros
+     * mil". Pasados los mil pagos eso dejo de ser un total y paso a ser un trozo —el mas viejo,
+     * ademas—, sin que nada lo dijera. Un total se suma donde estan los datos.
+     *
+     * Las devoluciones quedan fuera: salieron del cajon, no son ingreso. Contarlas inflaba el
+     * mes por el doble de cada devolucion (una vez el cobro, otra la devolucion).
+     */
+    @Query("""
+        SELECT COALESCE(SUM(pg.montoRecibido), 0), COUNT(pg)
+        FROM Pago pg
+        WHERE pg.fechaPago >= :desde AND pg.fechaPago < :hasta
+          AND pg.esDevolucion = false
+        """)
+    Object[] resumenEntreFechas(@Param("desde") LocalDateTime desde,
+                                @Param("hasta") LocalDateTime hasta);
+
+    /**
      * Lo devuelto en el turno. Es dinero que SALIO del cajon, asi que resta del saldo final.
      *
      * Va aparte de los ingresos a proposito. El arqueo del dia es lo que se cobro ese dia y no

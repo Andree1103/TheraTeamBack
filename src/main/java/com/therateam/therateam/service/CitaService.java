@@ -457,7 +457,7 @@ public class CitaService {
                         .map(CatEstadoCita::getKey).orElse(null);
                 if ("ASISTIDA".equals(estadoKey)) {
                     String estadoPagoKey = e.getEstadoPago() != null ? e.getEstadoPago().getKey() : null;
-                    if (estadoPagoKey == null || "SIN_PAGO".equals(estadoPagoKey)) {
+                    if (!tieneDineroAplicado(estadoPagoKey)) {
                         throw new IllegalArgumentException(
                                 "No se puede marcar la cita como Asistida sin un pago registrado — registra al menos un abono primero.");
                     }
@@ -731,6 +731,11 @@ public class CitaService {
      */
     @Transactional
     public void revertirDinero(Cita cita, boolean devolverComoDinero, Long metodoId, String porQue) {
+        // Se toma la foto ANTES de mover nada: con esto se sabe despues si de verdad habia
+        // dinero que resolver y si al paciente le quedo algo a favor. Ver marcarQueSeHizo.
+        BigDecimal habiaCobrado = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
+        BigDecimal saldoAntes = saldoDe(cita.getPaciente());
+
         if (cita.getSesion() != null && cita.getSesion().getTratamiento() != null) {
             // Cita de paquete: el pago está contra el tratamiento (repartido entre sesiones), no
             // hay un Pago propio de esta cita — se revierte por monto, no por fila de Pago.
@@ -782,6 +787,55 @@ public class CitaService {
             }
             citaRepository.save(cita);
         }
+
+        marcarQueSeHizoConElDinero(cita, devolverComoDinero, habiaCobrado, saldoAntes);
+    }
+
+    private BigDecimal saldoDe(Paciente paciente) {
+        if (paciente == null || paciente.getId() == null) return BigDecimal.ZERO;
+        return pacienteRepository.findById(paciente.getId())
+                .map(p -> p.getSaldoAFavor() != null ? p.getSaldoAFavor() : BigDecimal.ZERO)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    /**
+     * Deja dicho en la cita QUE se hizo con su dinero, no solo que ya no lo tiene.
+     *
+     * Las dos salidas —devolver o dejarlo a favor— acababan en SIN_PAGO. Es verdad a medias: la
+     * cita ya no tiene dinero aplicado, pero el dato que hace falta despues es el otro, si
+     * aquello salio del cajon o si el paciente tiene un credito esperandolo. En el listado las
+     * dos filas se leian igual y habia que entrar a Pagos a buscar si existia una devolucion.
+     *
+     * «A favor» solo se escribe si al paciente le subio el saldo de verdad. Un paquete cobrado
+     * con «Sin pago» no genera credito —no entro un sol—, y marcarlo asi mandaria a recepcion a
+     * buscar un saldo que no existe. En ese caso se queda en SIN_PAGO, que es lo que paso.
+     */
+    private void marcarQueSeHizoConElDinero(Cita cita, boolean devolverComoDinero,
+                                            BigDecimal habiaCobrado, BigDecimal saldoAntes) {
+        if (habiaCobrado == null || habiaCobrado.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        String key;
+        if (devolverComoDinero) {
+            key = "DEVUELTO";
+        } else {
+            key = saldoDe(cita.getPaciente()).compareTo(saldoAntes) > 0 ? "A_FAVOR" : "SIN_PAGO";
+        }
+        catEstadoPagoCitaRepository.findByKey(key).ifPresent(cita::setEstadoPago);
+        cita.setMontoPagado(BigDecimal.ZERO);
+        citaRepository.save(cita);
+    }
+
+    /**
+     * Hay dinero aplicado AHORA mismo en la cita.
+     *
+     * No es «distinto de SIN_PAGO», que es como estaba escrito: una cita anulada y DEVUELTA
+     * tampoco tiene dinero encima, y con la comparacion vieja pasaba por cobrada —se la podia
+     * marcar Asistida despues de haberle devuelto el dinero al paciente.
+     */
+    private static boolean tieneDineroAplicado(String estadoPagoKey) {
+        return "PAGADA".equals(estadoPagoKey)
+            || "PARCIAL".equals(estadoPagoKey)
+            || "DESCONTADA".equals(estadoPagoKey);
     }
 
     private static String capitalizar(String t) {

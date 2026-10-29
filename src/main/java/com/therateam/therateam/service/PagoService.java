@@ -786,6 +786,21 @@ public class PagoService {
         return guardada;
     }
 
+    /** Lo cobrado en un rango, para los KPI del Dashboard. Ver PagoRepository.resumenEntreFechas. */
+    @Transactional(readOnly = true)
+    public com.therateam.therateam.controller.PagoController.ResumenDePagos resumenEntreFechas(
+            java.time.LocalDateTime desde, java.time.LocalDateTime hasta) {
+        Object[] fila = repository.resumenEntreFechas(desde, hasta);
+        // La consulta devuelve una fila de dos columnas; segun el driver llega envuelta en otro
+        // array, asi que se desenvuelve antes de leerla.
+        if (fila != null && fila.length == 1 && fila[0] instanceof Object[] interna) fila = interna;
+        BigDecimal total = (fila != null && fila.length > 0 && fila[0] != null)
+                ? (BigDecimal) fila[0] : BigDecimal.ZERO;
+        long cantidad = (fila != null && fila.length > 1 && fila[1] != null)
+                ? ((Number) fila[1]).longValue() : 0L;
+        return new com.therateam.therateam.controller.PagoController.ResumenDePagos(total, cantidad);
+    }
+
     /** El método más reciente usado en un pago real (no devolución/adicional) del paquete —
      *  default razonable para la devolución cuando no se especifica uno explícito. */
     public Long metodoMasRecienteDelTratamiento(Long tratamientoId) {

@@ -40,6 +40,17 @@ public class PagoController {
         return service.findAllPaged(pageable, paciente, referencia, metodoId, tienePaquete, montoMin, montoMax, fechaInicio, fechaFin);
     }
 
+    /** Lo cobrado en un rango y cuantos cobros fueron: un total, no una pagina de filas. */
+    public record ResumenDePagos(BigDecimal total, long cantidad) {}
+
+    /** GET /api/pagos/resumen?fechaInicio=...&fechaFin=... — para los KPI del Dashboard. */
+    @GetMapping("/resumen")
+    public ResumenDePagos resumen(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin) {
+        return service.resumenEntreFechas(fechaInicio, fechaFin);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Pago> getById(@PathVariable Long id) {
         return service.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
