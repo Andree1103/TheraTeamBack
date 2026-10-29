@@ -154,7 +154,10 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
           AND (CAST(:fechaFin AS timestamp) IS NULL OR c.fechaInicio <= :fechaFin)
           AND (CAST(:terapeuta AS string) IS NULL OR LOWER(CONCAT(u.nombre, ' ', u.apellido)) LIKE LOWER(CONCAT('%', CAST(:terapeuta AS string), '%')))
           AND (CAST(:terapeutaId AS long) IS NULL OR ter.id = :terapeutaId)
-          AND (CAST(:estadoKey AS string) IS NULL
+          AND ((:sinMarca = TRUE
+                AND e.key IN ('PROGRAMADA', 'CONFIRMADA')
+                AND c.fechaInicio < CURRENT_TIMESTAMP)
+               OR (CAST(:estadoKey AS string) IS NULL AND :sinMarca = FALSE)
                OR e.key = :estadoKey
                OR (LOCATE(',', :estadoKey) > 0
                    AND LOCATE(CONCAT(',', e.key, ','), CONCAT(',', :estadoKey, ',')) > 0))
@@ -171,6 +174,16 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
                                           @Param("terapeuta") String terapeuta,
                                           @Param("terapeutaId") Long terapeutaId,
                                           @Param("estadoKey") String estadoKey,
+                                          /**
+                                           * Trae ademas las citas que ya pasaron y nadie marco.
+                                           *
+                                           * No es un estado mas: "sin marca" no existe en el
+                                           * catalogo, es una cita que sigue Programada cuando su
+                                           * hora ya paso. Va en su propio parametro porque la
+                                           * condicion es compuesta —estado Y fecha— y no se puede
+                                           * decir con la lista de estados.
+                                           */
+                                          @Param("sinMarca") boolean sinMarca,
                                           @Param("paciente") String paciente,
                                           @Param("areaId") Long areaId,
                                           @Param("metodoPagoId") Long metodoPagoId,

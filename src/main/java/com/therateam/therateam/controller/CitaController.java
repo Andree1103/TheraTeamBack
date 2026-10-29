@@ -76,12 +76,20 @@ public class CitaController {
             @RequestParam(required = false) String estadoPagoKey,
             @RequestParam(required = false) String tipoTerapiaKey,
             @RequestParam(required = false) List<Long> terapeutaIds,
+            /**
+             * Suma las citas que ya pasaron y nadie marco — ni asistio ni falto.
+             *
+             * No son un estado del catalogo: son citas que siguen Programada con su hora ya
+             * pasada. Atenciones las pide para poder enseñarlas como «Sin marca», que es el
+             * unico sitio donde se ven: hasta ahora no salian en ninguna lista de lo que paso.
+             */
+            @RequestParam(required = false, defaultValue = "false") boolean sinMarca,
             @PageableDefault(size = 50) Pageable pageable,
             Authentication auth
     ) {
         return service.findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, restriccionTerapeutaId(auth),
                 estadoKey, paciente, areaId, metodoPagoId, estadoPagoKey, tipoTerapiaKey, terapeutaIds,
-                conNulosAlFinal(pageable)).map(this::redactarTelefono);
+                sinMarca, conNulosAlFinal(pageable)).map(this::redactarTelefono);
     }
 
     /**

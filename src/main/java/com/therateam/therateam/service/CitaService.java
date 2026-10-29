@@ -74,8 +74,8 @@ public class CitaService {
     /** `terapeutaIdRestriccion` acota los resultados a un solo terapeuta (citasSoloPropias=true); null = sin restricción. */
     public Page<CitaDTO> findAllPaged(Pageable pageable, Long terapeutaIdRestriccion) {
         if (terapeutaIdRestriccion == null) return citaRepository.findAllProjected(pageable);
-        return citaRepository.findByFiltrosProjected(null, null, null, terapeutaIdRestriccion, null, null, null, null,
-                null, null, true, List.of(-1L), pageable);
+        return citaRepository.findByFiltrosProjected(null, null, null, terapeutaIdRestriccion, null, false, null, null,
+                null, null, null, true, List.of(-1L), pageable);
     }
 
     public Page<CitaDTO> findByFiltrosPaged(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta,
@@ -94,13 +94,23 @@ public class CitaService {
                                              Long terapeutaIdRestriccion, String estadoKey, String paciente,
                                              Long areaId, Long metodoPagoId, String estadoPagoKey,
                                              String tipoTerapiaKey, List<Long> terapeutaIds, Pageable pageable) {
+        return findByFiltrosPaged(fechaInicio, fechaFin, terapeuta, terapeutaIdRestriccion, estadoKey,
+                paciente, areaId, metodoPagoId, estadoPagoKey, tipoTerapiaKey, terapeutaIds, false, pageable);
+    }
+
+    /** Igual, pudiendo sumar las citas que ya pasaron y nadie marco. Ver CitaRepository.sinMarca. */
+    public Page<CitaDTO> findByFiltrosPaged(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta,
+                                             Long terapeutaIdRestriccion, String estadoKey, String paciente,
+                                             Long areaId, Long metodoPagoId, String estadoPagoKey,
+                                             String tipoTerapiaKey, List<Long> terapeutaIds,
+                                             boolean sinMarca, Pageable pageable) {
         boolean sinFiltroTerapeutas = terapeutaIds == null || terapeutaIds.isEmpty();
         // Con la lista vacía la consulta nunca llega al IN, pero JPA igual exige un valor: se manda
         // un id imposible en vez de null para no depender de cómo cada driver trate la colección.
         List<Long> ids = sinFiltroTerapeutas ? List.of(-1L) : terapeutaIds;
         return conQuienLaToco(citaRepository.findByFiltrosProjected(fechaInicio, fechaFin,
                 // terapeuta y paciente se comparan con LIKE LOWER(...): van en minúscula.
-                paraLike(terapeuta), terapeutaIdRestriccion, estadoKey, paraLike(paciente),
+                paraLike(terapeuta), terapeutaIdRestriccion, estadoKey, sinMarca, paraLike(paciente),
                 // estadoPagoKey y tipoTerapiaKey se comparan por igualdad contra la columna `key`,
                 // que está en mayúscula ('PAGADA', 'KIDS'): pasarlas a minúscula no encontraría nada.
                 areaId, metodoPagoId, soloBlanco(estadoPagoKey), soloBlanco(tipoTerapiaKey),
@@ -160,7 +170,7 @@ public class CitaService {
 
     public List<CitaDTO> findByFiltros(LocalDateTime fechaInicio, LocalDateTime fechaFin, String terapeuta) {
         String terapeutaFiltro = (terapeuta == null || terapeuta.isBlank()) ? null : terapeuta.toLowerCase();
-        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, null, null, null, null, null,
+        return citaRepository.findByFiltrosProjected(fechaInicio, fechaFin, terapeutaFiltro, null, null, false, null, null, null,
                 null, null, true, List.of(-1L),
                 org.springframework.data.domain.Pageable.unpaged()).getContent();
     }
