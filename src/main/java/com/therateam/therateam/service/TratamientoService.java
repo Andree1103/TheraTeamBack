@@ -332,7 +332,7 @@ public class TratamientoService {
 
     @Transactional(readOnly = true)
     public List<SesionDTO> getSesionesByTratamiento(Long tratamientoId) {
-        return sesionRepository.findByTratamientoIdWithCita(tratamientoId)
+        return sesionRepository.findByTratamientoIdParaMostrar(tratamientoId)
                 .stream()
                 .map(this::toSesionDTO)
                 .collect(Collectors.toList());
