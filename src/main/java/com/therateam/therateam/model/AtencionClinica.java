@@ -36,16 +36,32 @@ public class AtencionClinica {
     private List<AtencionMetrica> metricas;
 
     /**
-     * ATENDIDA = la sesion se dio; INASISTENCIA = el paciente no vino.
+     * Que paso con la cita. Tres respuestas, no dos: ATENDIDA = la sesion se dio;
+     * INASISTENCIA = el paciente no vino; NO_MARCO = nadie lo anoto.
      *
      * La inasistencia se guarda aqui y no en una tabla aparte porque la pregunta es "que paso con
      * esta cita" y la respuesta es una sola por cita (cita_id ya es UNIQUE). Asi aparece en
      * Atenciones junto a las sesiones dadas, y se cuenta y exporta igual que el resto.
+     *
+     * NO_MARCO es el valor por defecto, y eso es la parte importante. Con "ATENDIDA" por defecto,
+     * una fila a medio llenar afirmaba que la sesion se dio sin que nadie lo hubiera dicho — y esa
+     * es justo la afirmacion que mas cuesta desmentir un mes despues. Hasta que alguien diga que
+     * paso, lo que paso es que no se marco. Las dos rutas que si saben la respuesta la escriben
+     * explicitamente (AtencionClinicaService#registrar y #registrarInasistencia), asi que el
+     * defecto solo cae donde de verdad no se sabe.
+     *
+     * Ojo con lo que significa una fila NO_MARCO: la mayoria de las citas sin marcar no tienen
+     * fila aqui. Tenerla dice algo mas fuerte —alguien la reviso y dejo constancia de que se
+     * paso— y por eso la pantalla distingue las dos cosas: ver que nadie la toco no es lo mismo
+     * que ver que alguien ya se dio cuenta.
      */
     @Column(nullable = false, length = 20)
-    private String tipo = "ATENDIDA";
+    private String tipo = "NO_MARCO";
 
-    /** Por que no vino, tal como se anoto. Solo tiene valor cuando tipo = INASISTENCIA. */
+    /**
+     * Por que no vino (tipo INASISTENCIA) o por que nadie lo marco (tipo NO_MARCO), tal como se
+     * anoto. Vacio en una atencion normal: ahi no hay nada que explicar.
+     */
     @Column(length = 255)
     private String motivo;
 

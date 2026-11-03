@@ -76,6 +76,30 @@ public class AtencionClinicaController {
         private Boolean devolver;
     }
 
+    /**
+     * POST /api/atenciones/no-marco — nadie marco esta cita.
+     *
+     * El tercer resultado. No mueve dinero ni cambia el estado de la cita: deja la constancia de
+     * que ya se noto que no se sabe que paso, con quien y cuando. Ver
+     * AtencionClinicaService#registrarNoMarco.
+     *
+     * El motivo es opcional, al contrario que en la inasistencia: aqui el dato es que nadie
+     * marco, y quien repasa el mes casi nunca sabe por que.
+     */
+    @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR')")
+    @PostMapping("/no-marco")
+    public ResponseEntity<AtencionClinica> registrarNoMarco(@RequestBody NoMarcoRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(service.registrarNoMarco(req.getCitaId(), req.getMotivo()));
+    }
+
+    /** De que cita se trata y, si se sabe, por que se paso. */
+    @lombok.Data
+    public static class NoMarcoRequest {
+        private Long citaId;
+        private String motivo;
+    }
+
     @PreAuthorize("hasAuthority('MODULO_CITAS_EDITAR')")
     @PutMapping("/{id}")
     public ResponseEntity<AtencionClinica> update(@PathVariable Long id, @RequestBody AtencionClinica atencion) {
