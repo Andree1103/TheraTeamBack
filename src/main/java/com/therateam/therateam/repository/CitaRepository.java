@@ -257,6 +257,64 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
         """)
     List<Object[]> contarCitasPorTratamiento(@Param("ids") java.util.Collection<Long> ids);
 
+    /**
+     * Lo cobrado de sesiones que siguen en pie y sin darse, de un paciente: [cuantas, cuanto].
+     *
+     * Es la mitad grande de "cuanto habria que devolver" (ver PorDevolverDTO). Se suma el
+     * montoPagado de la cita y no su precio a proposito: lo que se devuelve es lo que entro, y
+     * una cita a medio pagar solo devuelve lo que se pago de ella.
+     *
+     * Quedan fuera los estados en que la cita ya no es una sesion por dar: las atendidas porque
+     * el dinero ya se gano, y las anuladas, reprogramadas e inasistencias porque su dinero ya se
+     * resolvio por su lado —devuelto como saldo o cobrado como penalidad— y volver a contarlo
+     * seria devolverlo dos veces. Es la misma lista que decide si una cita puede entrar en un
+     * paquete, por el mismo motivo: son las que todavia estan por ocurrir.
+     */
+    @Query("""
+        SELECT COUNT(c), SUM(c.montoPagado)
+        FROM Cita c
+        LEFT JOIN c.estado e
+        WHERE c.paciente.id = :pacienteId
+          AND c.eliminado = false
+          AND c.montoPagado > 0
+          AND (e.key IS NULL OR e.key NOT IN :yaNoSonPorDar)
+        """)
+    List<Object[]> cobradoDeSesionesSinDarPorPaciente(@Param("pacienteId") Long pacienteId,
+                                                      @Param("yaNoSonPorDar") java.util.Collection<String> yaNoSonPorDar);
+
+    /** Igual que el anterior, acotado a un paquete. */
+    @Query("""
+        SELECT COUNT(c), SUM(c.montoPagado)
+        FROM Cita c
+        JOIN c.sesion s
+        LEFT JOIN c.estado e
+        WHERE s.tratamiento.id = :tratamientoId
+          AND c.eliminado = false
+          AND c.montoPagado > 0
+          AND (e.key IS NULL OR e.key NOT IN :yaNoSonPorDar)
+        """)
+    List<Object[]> cobradoDeSesionesSinDarPorTratamiento(@Param("tratamientoId") Long tratamientoId,
+                                                         @Param("yaNoSonPorDar") java.util.Collection<String> yaNoSonPorDar);
+
+    /**
+     * Cuanto del dinero de un paquete llego a estar sobre alguna de sus citas.
+     *
+     * Se compara contra tratamiento.totalCobrado para saber cuanto entro y no se repartio: un
+     * cobro solo alcanza a las sesiones que ya tienen cita creada, y el resto se queda en el
+     * total del paquete sin figurar en ninguna. Sin esta resta, devolver "lo de las citas sin
+     * dar" devuelve de menos a quien pago el paquete completo por adelantado.
+     *
+     * Cuenta TODAS las citas del paquete, incluidas las dadas y las anuladas: lo que se busca es
+     * cuanto del total ya tiene dueño, no cuanto se debe.
+     */
+    @Query("""
+        SELECT COALESCE(SUM(c.montoPagado), 0)
+        FROM Cita c
+        JOIN c.sesion s
+        WHERE s.tratamiento.id = :tratamientoId AND c.eliminado = false
+        """)
+    java.math.BigDecimal aplicadoAlasCitasDelTratamiento(@Param("tratamientoId") Long tratamientoId);
+
     /** Todas las citas de un lote de "citas masivas" — para contar cuántas faltan/se atendieron. */
     List<Cita> findByLoteMasivoIdAndEliminadoFalse(String loteMasivoId);
 

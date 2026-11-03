@@ -5,6 +5,7 @@ import com.therateam.therateam.dto.CitaDTO;
 import com.therateam.therateam.dto.CitaRapidaRequest;
 import com.therateam.therateam.dto.LoteResumenDTO;
 import com.therateam.therateam.dto.PacienteInput;
+import com.therateam.therateam.dto.PorDevolverDTO;
 import com.therateam.therateam.model.*;
 import com.therateam.therateam.repository.*;
 import com.therateam.therateam.config.SecurityUtils;
@@ -196,6 +197,77 @@ public class CitaService {
                 .filter(java.util.Objects::nonNull).findFirst().orElse(null);
         Integer faltanPorCrear = totalPlaneado != null ? Math.max(0, totalPlaneado - (total - canceladas)) : null;
         return new LoteResumenDTO(loteMasivoId, total, atendidas, pendientes, canceladas, totalPlaneado, faltanPorCrear);
+    }
+
+    // ── Cuanto habria que devolver ────────────────────────────────────────────
+    //
+    // La pregunta llega siempre igual y siempre con prisa: el paciente pago un paquete de diez
+    // sesiones, vino a cinco y quiere su dinero. Se resolvia a mano con (10 - 5) x precio, que
+    // falla por los dos lados: el precio puede cambiar de una sesion a otra, y parte de lo
+    // cobrado puede no estar sobre ninguna cita. Ver PorDevolverDTO para el desglose.
+
+    /**
+     * Lo que habria que devolverle a un paciente si dejara todo hoy.
+     *
+     * Suma sus tres origenes: lo cobrado sobre citas que siguen sin darse, lo que entro a sus
+     * paquetes y no llego a repartirse a ninguna cita, y el saldo que ya tenia a favor.
+     */
+    public PorDevolverDTO porDevolverDePaciente(Long pacienteId) {
+        Object[] fila = primeraFila(citaRepository.cobradoDeSesionesSinDarPorPaciente(
+                pacienteId, EstadosDeCita.YA_NO_ES_UNA_SESION_POR_DAR));
+
+        BigDecimal sinRepartir = BigDecimal.ZERO;
+        for (Tratamiento t : tratamientoRepository.findByPacienteId(pacienteId)) {
+            sinRepartir = sinRepartir.add(sinRepartirDe(t));
+        }
+
+        BigDecimal saldo = pacienteRepository.findById(pacienteId)
+                .map(Paciente::getSaldoAFavor).orElse(BigDecimal.ZERO);
+
+        return new PorDevolverDTO(cuantas(fila), cuanto(fila), sinRepartir, saldo);
+    }
+
+    /**
+     * Lo mismo acotado a un paquete.
+     *
+     * Sin el saldo a favor del paciente: ese no es dinero de este paquete y sumarlo aqui lo
+     * contaria otra vez en cada paquete que tenga abierto.
+     */
+    public PorDevolverDTO porDevolverDeTratamiento(Long tratamientoId) {
+        Object[] fila = primeraFila(citaRepository.cobradoDeSesionesSinDarPorTratamiento(
+                tratamientoId, EstadosDeCita.YA_NO_ES_UNA_SESION_POR_DAR));
+        BigDecimal sinRepartir = tratamientoRepository.findById(tratamientoId)
+                .map(this::sinRepartirDe).orElse(BigDecimal.ZERO);
+        return new PorDevolverDTO(cuantas(fila), cuanto(fila), sinRepartir, BigDecimal.ZERO);
+    }
+
+    /**
+     * Lo que se cobro al paquete y no esta sobre ninguna de sus citas.
+     *
+     * Con piso en cero: si el reparto dejo sobre las citas mas de lo que dice totalCobrado, el
+     * descuadre es real pero no es dinero por devolver, y restar a ciegas lo taparia con un
+     * numero negativo. Eso lo denuncia el cuadre, que es su trabajo.
+     */
+    private BigDecimal sinRepartirDe(Tratamiento t) {
+        if (t == null || t.getId() == null) return BigDecimal.ZERO;
+        BigDecimal cobrado = t.getTotalCobrado() != null ? t.getTotalCobrado() : BigDecimal.ZERO;
+        BigDecimal aplicado = citaRepository.aplicadoAlasCitasDelTratamiento(t.getId());
+        if (aplicado == null) aplicado = BigDecimal.ZERO;
+        return cobrado.subtract(aplicado).max(BigDecimal.ZERO);
+    }
+
+    // Las tres de abajo solo desenvuelven el [COUNT, SUM] de las consultas. Una agregacion sin
+    // GROUP BY devuelve una fila siempre, pero SUM sobre cero filas devuelve null, no cero.
+    private Object[] primeraFila(List<Object[]> filas) {
+        return filas != null && !filas.isEmpty() ? filas.get(0) : null;
+    }
+
+    private long cuantas(Object[] fila) {
+        return fila != null && fila[0] instanceof Number n ? n.longValue() : 0L;
+    }
+
+    private BigDecimal cuanto(Object[] fila) {
+        return fila != null && fila[1] instanceof BigDecimal b ? b : BigDecimal.ZERO;
     }
 
     /** No se puede pasar del total planeado del lote — las citas ya canceladas no cuentan

@@ -133,6 +133,25 @@ public class CitaController {
         return service.resumenLote(loteMasivoId);
     }
 
+    /**
+     * GET /api/citas/por-devolver/paciente/{id} — cuanto habria que devolverle si deja todo hoy.
+     *
+     * Son las citas que ya estan cobradas y todavia sin darse, con su dinero. La pregunta aparece
+     * en el mostrador con el paciente delante —pago diez sesiones, vino a cinco, quiere su
+     * dinero— y se contestaba a mano multiplicando sesiones por precio, que falla en cuanto el
+     * precio cambia de una sesion a otra. Ver PorDevolverDTO.
+     */
+    @GetMapping("/por-devolver/paciente/{pacienteId}")
+    public com.therateam.therateam.dto.PorDevolverDTO porDevolverDePaciente(@PathVariable Long pacienteId) {
+        return service.porDevolverDePaciente(pacienteId);
+    }
+
+    /** GET /api/citas/por-devolver/tratamiento/{id} — lo mismo, solo de ese paquete. */
+    @GetMapping("/por-devolver/tratamiento/{tratamientoId}")
+    public com.therateam.therateam.dto.PorDevolverDTO porDevolverDeTratamiento(@PathVariable Long tratamientoId) {
+        return service.porDevolverDeTratamiento(tratamientoId);
+    }
+
     @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR') and hasAuthority('CITAS_PUEDE_CREAR')")
     @PostMapping
     public ResponseEntity<Cita> create(@Valid @RequestBody Cita cita) {
