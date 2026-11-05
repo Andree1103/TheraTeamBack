@@ -255,6 +255,27 @@ public class CitaController {
     }
 
     /**
+     * PUT /api/citas/{id}/marca?valor=ASISTIO — la marca de asistencia de la cita.
+     *
+     * Permiso propio (PUEDE_MARCAR_CITA), que se da y se quita en Seguridad > Roles: es el sello
+     * de auditoria que antes era el visto bueno, y no todo el que agenda tiene por que ponerlo.
+     *
+     * No confundir con registrar la atencion o anotar la inasistencia: aquello cambia el estado
+     * de la cita, mueve dinero y descuenta sesiones del paquete, y sigue viviendo en
+     * AtencionClinicaController con su propio permiso. Esto solo guarda el dato.
+     *
+     * `valor` vacio borra la marca.
+     */
+    @PreAuthorize("hasAuthority('PUEDE_MARCAR_CITA')")
+    @PutMapping("/{id}/marca")
+    public ResponseEntity<CitaDTO> marcarAsistencia(@PathVariable Long id,
+                                                     @RequestParam(required = false) String valor) {
+        return service.marcarAsistencia(id, valor)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
      * PUT /api/citas/{id}/metodo-pago — corrige el medio con el que se cobro esa cita.
      *
      * Va con el permiso de EDITAR de Pagos y no con el de corregir atenciones: quien se equivoca

@@ -419,7 +419,6 @@ public class CitaService {
     @Transactional
     public Optional<Cita> update(Long id, Cita data) {
         return citaRepository.findById(id).map(e -> {
-            String firmaAntes = firmaDeLoValidado(e);
             Long terapeutaOriginalId = e.getTerapeuta() != null ? e.getTerapeuta().getId() : null;
             LocalDateTime inicioOriginal = e.getFechaInicio();
             LocalDateTime finOriginal = e.getFechaFin();
@@ -564,48 +563,42 @@ public class CitaService {
                 citaHistorialRepository.save(h);
             }
 
-            // Si cambio algo de lo que se habia validado, el visto bueno caduca.
-            //
-            // Se compara una foto de los campos validados, no "se llamo a update": cambiar una
-            // nota previa o el link de la videollamada no altera lo que el supervisor reviso, y
-            // tumbar el sello por eso convertiria la validacion en un tramite que nadie respeta.
-            if (Boolean.TRUE.equals(e.getValidada()) && !firmaAntes.equals(firmaDeLoValidado(e))) {
-                e.setValidada(false);
-                e.setValidadaPor(null);
-                e.setValidadaEn(null);
-            }
-
             return citaRepository.save(e);
         });
     }
 
     /**
-     * Los campos que cubre el visto bueno, en una cadena comparable.
+     * Pone o quita la marca de asistencia de una cita.
      *
-     * Es lo que el supervisor mira al validar: quien, cuando, de que tipo, en que modalidad,
-     * cuanto cuesta y como esta de estado y de pago. Lo que no esta aqui (notas, link de
-     * videollamada, recordatorio) puede cambiar sin invalidar nada.
+     * Solo escribe tres columnas: que se marco, quien y cuando. NO cambia el estado de la cita,
+     * no mueve dinero y no toca el paquete — para eso estan registrar la atencion, anotar la
+     * inasistencia y anular, que siguen por su camino. Esto es el dato que piden los reportes.
+     *
+     * `valor` vacio o null borra la marca, que es como se corrige haberla puesto mal.
      */
-    private String firmaDeLoValidado(Cita c) {
-        // Todo por ID, nunca por key.
-        //
-        // El front manda las asociaciones como {id} y nada mas —es lo que Hibernate necesita para
-        // resolver la FK— asi que getKey() sobre lo recien asignado devuelve null mientras no se
-        // vuelva a leer de la base. Comparando por key, la foto de despues salia distinta
-        // SIEMPRE, y cualquier edicion tumbaba el visto bueno, hasta cambiar una nota. El id
-        // viene en las dos fotos y es el mismo dato.
-        return String.join("|",
-                String.valueOf(c.getPaciente() != null ? c.getPaciente().getId() : null),
-                String.valueOf(c.getTerapeuta() != null ? c.getTerapeuta().getId() : null),
-                String.valueOf(c.getFechaInicio()),
-                String.valueOf(c.getFechaFin()),
-                String.valueOf(c.getTipoTerapia() != null ? c.getTipoTerapia().getId() : null),
-                String.valueOf(c.getModalidad() != null ? c.getModalidad().getId() : null),
-                // El precio se normaliza: 80 y 80.00 son el mismo precio y no deben tumbar el sello.
-                c.getPrecio() != null ? c.getPrecio().stripTrailingZeros().toPlainString() : "null",
-                String.valueOf(c.getEstado() != null ? c.getEstado().getId() : null),
-                String.valueOf(c.getEstadoPago() != null ? c.getEstadoPago().getId() : null));
+    @Transactional
+    public Optional<CitaDTO> marcarAsistencia(Long id, String valor) {
+        String limpio = valor != null && !valor.isBlank() ? valor.trim().toUpperCase() : null;
+        if (limpio != null && !MARCAS_VALIDAS.contains(limpio)) {
+            throw new IllegalArgumentException(
+                    "Marca no valida: " + limpio + ". Solo ASISTIO, NO_ASISTIO o NO_MARCO.");
+        }
+        Long quien = SecurityUtils.currentUserId();
+        return citaRepository.findById(id).map(c -> {
+            c.setMarca(limpio);
+            if (limpio == null) {
+                c.setMarcaPor(null);
+                c.setMarcaEn(null);
+            } else {
+                c.setMarcaEn(LocalDateTime.now());
+                if (quien != null) usuarioRepository.findById(quien).ifPresent(c::setMarcaPor);
+            }
+            return toDTO(citaRepository.save(c));
+        });
     }
+
+    private static final java.util.Set<String> MARCAS_VALIDAS =
+            java.util.Set.of("ASISTIO", "NO_ASISTIO", "NO_MARCO");
 
     /**
      * Eliminación lógica: marca la cita como eliminada en vez de borrar la fila. El pago, el
@@ -1655,12 +1648,12 @@ public class CitaService {
         dto.setNotasPrevias(c.getNotasPrevias());
         dto.setRecordatorioEnviado(c.getRecordatorioEnviado());
         dto.setTipoRecurrencia(c.getTipoRecurrencia());
-        // El visto bueno, para las respuestas que salen de la entidad (crear, editar, validar).
-        // En los listados lo rellena conQuienLaToco, que proyecta el DTO sin pasar por aqui.
-        dto.setValidada(Boolean.TRUE.equals(c.getValidada()));
-        dto.setValidadaPorNombre(c.getValidadaPor() != null
-                ? (c.getValidadaPor().getNombre() + " " + c.getValidadaPor().getApellido()).trim() : null);
-        dto.setValidadaEn(c.getValidadaEn());
+        // La marca de asistencia, para las respuestas que salen de la entidad (crear, editar,
+        // marcar). En los listados la rellena la proyeccion, que arma el DTO sin pasar por aqui.
+        dto.setMarca(c.getMarca());
+        dto.setMarcaPorNombre(c.getMarcaPor() != null
+                ? (c.getMarcaPor().getNombre() + " " + c.getMarcaPor().getApellido()).trim() : null);
+        dto.setMarcaEn(c.getMarcaEn());
         dto.setMotivoEstado(c.getMotivoEstado());
         if (c.getReprogramacionDe() != null) dto.setReprogramacionDe(c.getReprogramacionDe().getId());
         dto.setPrecio(c.getPrecio());

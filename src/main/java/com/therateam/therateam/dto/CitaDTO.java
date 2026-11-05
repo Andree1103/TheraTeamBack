@@ -27,10 +27,10 @@ public class CitaDTO {
                     String usuarioCreacionNombre, String motivoEstado, Long reprogramacionDe,
                     Long reprogramadaEn, Boolean conDevolucion, java.math.BigDecimal montoDevuelto,
                     LocalDateTime fechaRegistro,
-                    Boolean validada, String validadaPorNombre, LocalDateTime validadaEn) {
-        this.validada = Boolean.TRUE.equals(validada);
-        this.validadaPorNombre = validadaPorNombre;
-        this.validadaEn = validadaEn;
+                    String marca, String marcaPorNombre, LocalDateTime marcaEn) {
+        this.marca = marca;
+        this.marcaPorNombre = marcaPorNombre;
+        this.marcaEn = marcaEn;
         this.conDevolucion = conDevolucion;
         this.montoDevuelto = montoDevuelto;
         this.fechaRegistro = fechaRegistro;
@@ -225,21 +225,20 @@ public class CitaDTO {
     private String usuarioAtencionNombre;
 
     /**
-     * Doble validacion: si la cita tiene el visto bueno y de quien.
+     * La marca de asistencia: ASISTIO, NO_ASISTIO, NO_MARCO o null si nadie la puso.
      *
-     * A diferencia de los dos de arriba, estos SI van en el constructor de la proyeccion. El
-     * enriquecido por pagina solo lo aplica una de las cuatro rutas de listado, y un sello que
-     * aparece en la pantalla filtrada y no en la agenda es peor que no tenerlo: la cita se ve
-     * sin validar segun por donde se mire. `validada` es una columna normal, asi que puede
-     * viajar con el resto y salir bien en todas.
+     * Viaja en la proyeccion del listado y no en el enriquecido por pagina: el enriquecido solo
+     * lo aplica una de las cuatro rutas de listado, y una cita que sale marcada en la pantalla
+     * filtrada y sin marcar en la agenda es peor que no tener marca. `marca` es una columna
+     * normal, asi que puede viajar con el resto y salir bien en todas.
      */
-    @JsonProperty("validada")
-    private Boolean validada = false;
+    @JsonProperty("marca")
+    private String marca;
 
-    @JsonProperty("validada_por_nombre")
-    private String validadaPorNombre;
+    @JsonProperty("marca_por_nombre")
+    private String marcaPorNombre;
 
-    /** Cuando se dio el visto bueno. Sin esto, "quien aprobo" no dice si fue antes o despues. */
-    @JsonProperty("validada_en")
-    private LocalDateTime validadaEn;
+    /** Cuando se marco. Sin esto, "quien marco" no dice si fue el mismo dia o un mes despues. */
+    @JsonProperty("marca_en")
+    private LocalDateTime marcaEn;
 }

@@ -98,21 +98,30 @@ public class Cita {
     private String tipoRecurrencia;
 
     /**
-     * Doble validacion: alguien distinto de quien la cargo revisa la cita y da el visto bueno.
+     * La marca de asistencia: ASISTIO, NO_ASISTIO o NO_MARCO. Null mientras nadie la ponga.
      *
-     * El sello caduca solo: si cambia algo de lo que se valido (fecha, terapeuta, tipo, precio,
-     * estado, pago), vuelve a false. Un visto bueno que sobrevive al cambio de lo que sellaba
-     * certifica unos datos que ya no existen, y es peor que no tener sello.
+     * Es un dato de auditoria y nada mas. NO cambia el estado de la cita, no mueve dinero, no
+     * toca las sesiones del paquete y no dispara ningun flujo: registrar la atencion, anotar la
+     * inasistencia y anular siguen siendo lo que eran. Lo unico que guarda es que alguien marco,
+     * que marco, quien y cuando — para los reportes.
+     *
+     * Reemplaza al visto bueno, que era un si/no. Se habia pedido para dejar constancia de si el
+     * paciente vino, y con dos valores no se podia anotar el caso que mas se da: que nadie llego
+     * a marcarla.
+     *
+     * No caduca al editar la cita, al reves que el visto bueno. Aquel certificaba unos datos
+     * —terapeuta, hora, precio— y cambiarlos lo dejaba certificando algo que ya no existia. Esto
+     * dice si el paciente vino, y corregirle el precio a la cita no cambia si vino.
      */
-    @Column(nullable = false)
-    private Boolean validada = false;
+    @Column(length = 12)
+    private String marca;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "validada_por")
-    private Usuario validadaPor;
+    @JoinColumn(name = "marca_por")
+    private Usuario marcaPor;
 
-    @Column(name = "validada_en")
-    private LocalDateTime validadaEn;
+    @Column(name = "marca_en")
+    private LocalDateTime marcaEn;
 
     // Autorreferencia: apunta a la cita anterior si es reprogramación
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
@@ -151,7 +160,6 @@ public class Cita {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();
         if (recordatorioEnviado == null) recordatorioEnviado = false;
         if (tipoRecurrencia == null) tipoRecurrencia = "EVENTUAL";
-        if (validada == null) validada = false;
         if (montoPagado == null) montoPagado = BigDecimal.ZERO;
         usuarioCreacionId = SecurityUtils.currentUserId();
         usuarioModificacionId = usuarioCreacionId;
