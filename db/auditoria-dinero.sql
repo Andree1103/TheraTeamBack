@@ -197,3 +197,33 @@ WHERE c.eliminado = false
   AND COALESCE(c.monto_pagado,0) > COALESCE(c.precio,0)
   AND e.key NOT IN ('ANULADA','NO_ASISTIO','REPROGRAMADA')
 ORDER BY 5 DESC;
+
+\echo ''
+\echo '=== V. Paquetes que siguen cobrando sesiones que ya se devolvieron ==='
+\echo '    Tiene que salir vacio. Una sesion cuyo dinero salio del paquete deja de contar en el'
+\echo '    total: si no, el paquete reclama como deuda justo el importe que se acaba de devolver.'
+\echo '    Lo arregla db/mantenimiento/2026-11-04-sesiones-devueltas-que-seguian-cobrandose.sql'
+WITH dinero_salido AS (
+  SELECT c.id AS cita_id, s.id AS sesion_id, s.tratamiento_id
+    FROM citas c
+    JOIN sesiones s ON s.id = c.sesion_id
+   WHERE EXISTS (SELECT 1 FROM pagos p WHERE p.cita_id = c.id AND p.es_devolucion)
+      OR EXISTS (SELECT 1 FROM asiento_lineas l JOIN asientos a ON a.id = l.asiento_id
+                  WHERE l.cita_id = c.id AND a.tipo = 'ANULACION' AND l.concepto = 'DEUDA_LIBERA')
+)
+SELECT t.id AS paquete, pa.nombre || ' ' || pa.apellido AS paciente, t.nombre AS paquete_nombre,
+       t.total_sesiones, t.total_cobrado,
+       (t.monto_total - t.total_cobrado) AS deuda_que_enseña,
+       (SELECT count(DISTINCT d.sesion_id) FROM dinero_salido d WHERE d.tratamiento_id = t.id) AS sesiones_devueltas
+  FROM tratamientos t
+  JOIN pacientes pa ON pa.id = t.paciente_id
+ WHERE t.estado_id NOT IN (SELECT id FROM cat_estados_tratamiento WHERE key = 'CANCELADO')
+   AND t.total_sesiones > GREATEST(
+         t.sesiones_atendidas,
+         (SELECT count(*) FROM sesiones s
+           WHERE s.tratamiento_id = t.id AND s.cita_activa_id IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM dinero_salido d WHERE d.cita_id = s.cita_activa_id)),
+         CASE WHEN COALESCE(t.precio_por_sesion,0) > 0
+              THEN ceil(t.total_cobrado / t.precio_por_sesion)::int ELSE 0 END)
+   AND EXISTS (SELECT 1 FROM dinero_salido d WHERE d.tratamiento_id = t.id)
+ ORDER BY deuda_que_enseña DESC;
