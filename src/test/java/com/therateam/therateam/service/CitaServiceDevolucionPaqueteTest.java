@@ -1,10 +1,12 @@
 package com.therateam.therateam.service;
 
+import com.therateam.therateam.model.CatEstadoTratamiento;
 import com.therateam.therateam.model.Cita;
 import com.therateam.therateam.model.Paciente;
 import com.therateam.therateam.model.Sesion;
 import com.therateam.therateam.model.Tratamiento;
 import com.therateam.therateam.repository.CatEstadoPagoCitaRepository;
+import com.therateam.therateam.repository.CatEstadoTratamientoRepository;
 import com.therateam.therateam.repository.CitaRepository;
 import com.therateam.therateam.repository.PacienteRepository;
 import com.therateam.therateam.repository.PagoRepository;
@@ -48,6 +50,7 @@ class CitaServiceDevolucionPaqueteTest {
     @Mock private PacienteRepository pacienteRepository;
     @Mock private TratamientoRepository tratamientoRepository;
     @Mock private CatEstadoPagoCitaRepository catEstadoPagoCitaRepository;
+    @Mock private CatEstadoTratamientoRepository catEstadoTratamientoRepository;
     @Mock private PagoRepository pagoRepository;
     @Mock private PagoService pagoService;
     @Mock private LibroService libro;
@@ -108,6 +111,25 @@ class CitaServiceDevolucionPaqueteTest {
 
         assertThat(paquete.getTotalSesiones()).isEqualTo(2);
         assertThat(paquete.getTotalCobrado()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void un_paquete_al_que_se_le_devolvio_todo_queda_cerrado() {
+        // Un paquete Activo con cero sesiones no se puede cerrar desde la pantalla: el formulario
+        // exige al menos una y rechaza el guardado aunque solo se este cambiando el estado. Asi
+        // que se cierra aqui, en el momento en que se queda vacio.
+        CatEstadoTratamiento cancelado = new CatEstadoTratamiento();
+        cancelado.setKey("CANCELADO");
+        lenient().when(catEstadoTratamientoRepository.findByKey("CANCELADO"))
+                 .thenReturn(Optional.of(cancelado));
+
+        Tratamiento paquete = paquete(1, "50", "50");
+        Cita cita = sesionDelPaquete(paquete, 1, "50");
+
+        service.revertirDinero(cita, true, null, "anulación");
+
+        assertThat(paquete.getTotalSesiones()).isZero();
+        assertThat(paquete.getEstado()).isSameAs(cancelado);
     }
 
     @Test

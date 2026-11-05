@@ -380,15 +380,25 @@ echo "== 23. Anular una sesion que nadie pago no encoge el paquete, y el hueco s
 # El paquete solo deja de cobrar una sesion cuando su dinero sale. Sin reembolso no hay nada que
 # justifique encogerlo, y anular tiene que seguir liberando el cupo para volver a agendar.
 MOD=$(q "SELECT id FROM cat_modalidades LIMIT 1")
+# Lo que se mira no es si la cita llega a crearse —eso depende de la agenda del terapeuta, de su
+# cupo por franja y de la hora que pida la bateria, y una hora fija se llena a las pocas
+# pasadas— sino POR QUE se rechaza. Lo que prueba este caso es el tope del paquete, asi que se
+# pregunta exactamente eso: si la respuesta habla del tope o no.
+agendarEn() { # $1 paquete -> cuerpo de la respuesta
+  curl -s -X POST "$API/api/citas/rapida" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+    -d "{\"pacienteId\":$P,\"terapeutaId\":$T,\"tipoTerapiaId\":$TT,\"tratamientoId\":$1,\"modalidadId\":$MOD,\"fechaInicio\":\"2026-12-01T09:00:00\",\"fechaFin\":\"2026-12-01T09:40:00\",\"duracionMinutos\":40}"
+}
+porElTope() { case "$1" in *"sesiones agendadas"*) echo "lo frena el tope";; *) echo "el tope lo deja pasar";; esac; }
+
 PQE=$(paq 2 50); read O1 O2 <<< $(citasDe $PQE 2 50)
 post "/api/citas/$O1/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
-check "sigue siendo de 2 sesiones"   "2" "$(sesionesPaq $PQE)"
-check "el hueco queda libre"         "1" "$(q "SELECT count(*) FROM sesiones WHERE tratamiento_id=$PQE AND cita_activa_id IS NULL")"
-check "se puede agendar en el hueco" "201" "$(post /api/citas/rapida "{\"pacienteId\":$P,\"terapeutaId\":$T,\"tipoTerapiaId\":$TT,\"tratamientoId\":$PQE,\"modalidadId\":$MOD,\"fechaInicio\":\"2026-12-01T09:00:00\",\"fechaFin\":\"2026-12-01T09:40:00\",\"duracionMinutos\":40}")"
+check "sigue siendo de 2 sesiones" "2" "$(sesionesPaq $PQE)"
+check "el hueco queda libre"       "1" "$(q "SELECT count(*) FROM sesiones WHERE tratamiento_id=$PQE AND cita_activa_id IS NULL")"
+check "y se puede volver a agendar en el" "el tope lo deja pasar" "$(porElTope "$(agendarEn $PQE)")"
 # Y donde SI se encogio, el hueco no se vuelve a llenar solo: el paquete del caso 19 bajo a una
 # sesion y ya la tiene agendada. Antes se contaban filas de sesion, el hueco liberado se
 # reutilizaba y el paquete acababa con 2 sesiones agendadas cobrando una sola.
-check "en el encogido ya no cabe otra" "400" "$(post /api/citas/rapida "{\"pacienteId\":$P,\"terapeutaId\":$T,\"tipoTerapiaId\":$TT,\"tratamientoId\":$PQ,\"modalidadId\":$MOD,\"fechaInicio\":\"2026-12-02T09:00:00\",\"fechaFin\":\"2026-12-02T09:40:00\",\"duracionMinutos\":40}")"
+check "en el encogido ya no cabe otra"    "lo frena el tope"      "$(porElTope "$(agendarEn $PQ)")"
 
 echo
 echo "RESULTADO: $OK correctos, $KO fallos"

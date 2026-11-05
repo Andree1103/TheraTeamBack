@@ -896,11 +896,21 @@ public class CitaService {
      * Solo se llama cuando había dinero sobre la sesión. Anular una sesión que nadie pagó no
      * mueve el tamaño del paquete: ahí no hay reembolso que lo justifique, el hueco se queda
      * libre y se puede volver a agendar, que es como se ha usado siempre.
+     *
+     * Y si se queda sin ninguna, el paquete se acabó: se marca Cancelado, igual que al anular el
+     * paquete entero (ver {@link #cerrarPaqueteAnulado}). No es cosmético — un paquete Activo con
+     * cero sesiones no se puede cerrar desde la pantalla, porque el formulario exige al menos una
+     * y rechaza el guardado aunque lo único que se esté cambiando sea el estado. Pasó de verdad:
+     * a una paciente se le devolvieron las cinco sesiones de su paquete y quedó así.
      */
     private void elPaqueteDejaDeCobrarEsaSesion(Tratamiento t) {
         int total = t.getTotalSesiones() != null ? t.getTotalSesiones() : 0;
         int atendidas = t.getSesionesAtendidas() != null ? t.getSesionesAtendidas() : 0;
         t.setTotalSesiones(Math.max(total - 1, atendidas));
+
+        if (t.getTotalSesiones() == 0) {
+            catEstadoTratamientoRepository.findByKey("CANCELADO").ifPresent(t::setEstado);
+        }
     }
 
     private BigDecimal saldoDe(Paciente paciente) {
