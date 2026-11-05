@@ -56,12 +56,12 @@ public final class SecurityUtils {
                 .anyMatch(a -> "PUEDE_CORREGIR_ATENCION".equals(a.getAuthority()));
     }
 
-    /** true solo si el rol del usuario puede dar el visto bueno a una cita. */
-    public static boolean puedeValidarCita() {
+    /** true solo si el rol del usuario puede marcar que paso con una cita. */
+    public static boolean puedeMarcarCita() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return false;
         return auth.getAuthorities().stream()
-                .anyMatch(a -> "PUEDE_VALIDAR_CITA".equals(a.getAuthority()));
+                .anyMatch(a -> "PUEDE_MARCAR_CITA".equals(a.getAuthority()));
     }
 
     /** true solo si el rol del usuario puede ver el saldo inicial de la caja. */

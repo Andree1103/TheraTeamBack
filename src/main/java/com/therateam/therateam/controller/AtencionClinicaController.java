@@ -42,11 +42,21 @@ public class AtencionClinicaController {
         return service.findByPaciente(pacienteId);
     }
 
+    /*
+     * Las tres respuestas —registrar, inasistencia y no-marco— piden PUEDE_MARCAR_CITA, que es
+     * el permiso del rol que antes era el del visto bueno. Pedian MODULO_CITAS_CREAR, o sea el
+     * mismo permiso de cargar una cita: no habia forma de dejar que alguien agendara sin
+     * dejarle ademas decir que paso, y eso es lo que mueve el dinero y las sesiones del paquete.
+     *
+     * Corregir (PUT) y deshacer (DELETE) se quedan con los suyos: no son marcar, son enmendar o
+     * borrar lo marcado, y eso la clinica lo tiene mas cerrado a proposito.
+     */
+
     /**
      * Registra la atención de una cita:
      * guarda atencion_clinica + métricas, actualiza sesion y tratamiento.
      */
-    @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR')")
+    @PreAuthorize("hasAuthority('PUEDE_MARCAR_CITA')")
     @PostMapping
     public ResponseEntity<AtencionClinica> registrar(@RequestBody AtencionClinicaRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.registrar(req));
@@ -58,7 +68,7 @@ public class AtencionClinicaController {
      * Deja la constancia en Atenciones (tipo INASISTENCIA + motivo) y pone la cita en No asistio.
      * El motivo es obligatorio: sin el, la fila no responde nada que no dijera ya el estado.
      */
-    @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR')")
+    @PreAuthorize("hasAuthority('PUEDE_MARCAR_CITA')")
     @PostMapping("/inasistencia")
     public ResponseEntity<AtencionClinica> registrarInasistencia(@RequestBody InasistenciaRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -86,7 +96,7 @@ public class AtencionClinicaController {
      * El motivo es opcional, al contrario que en la inasistencia: aqui el dato es que nadie
      * marco, y quien repasa el mes casi nunca sabe por que.
      */
-    @PreAuthorize("hasAuthority('MODULO_CITAS_CREAR')")
+    @PreAuthorize("hasAuthority('PUEDE_MARCAR_CITA')")
     @PostMapping("/no-marco")
     public ResponseEntity<AtencionClinica> registrarNoMarco(@RequestBody NoMarcoRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)

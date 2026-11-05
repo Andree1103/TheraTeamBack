@@ -608,30 +608,6 @@ public class CitaService {
     }
 
     /**
-     * Dar o quitar el visto bueno a una cita.
-     *
-     * Valida cualquiera que tenga el permiso del rol, haya cargado la cita o no: el control es el
-     * permiso, no de quien venga la cita. Queda guardado quien dio el visto bueno y cuando, que es
-     * lo que despues permite responder "quien aprobo esto".
-     */
-    @Transactional
-    public Optional<CitaDTO> cambiarValidacion(Long id, boolean validada) {
-        Long quien = SecurityUtils.currentUserId();
-        return citaRepository.findById(id).map(c -> {
-            if (!validada) {
-                c.setValidada(false);
-                c.setValidadaPor(null);
-                c.setValidadaEn(null);
-                return toDTO(citaRepository.save(c));
-            }
-            c.setValidada(true);
-            c.setValidadaEn(LocalDateTime.now());
-            if (quien != null) usuarioRepository.findById(quien).ifPresent(c::setValidadaPor);
-            return toDTO(citaRepository.save(c));
-        });
-    }
-
-    /**
      * Eliminación lógica: marca la cita como eliminada en vez de borrar la fila. El pago, el
      * historial y la atención clínica quedan intactos (dinero y auditoría no deben desaparecer
      * solo porque se borró la cita) — desaparece de agendas y listados porque esas consultas ya

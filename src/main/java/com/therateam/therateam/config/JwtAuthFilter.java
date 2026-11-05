@@ -78,10 +78,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PUEDE_EXPORTAR"));
                 }
 
-                // Y quien puede dar el visto bueno a una cita (doble validacion).
-                Boolean puedeValidar = claims.get("puedeValidarCita", Boolean.class);
-                if (Boolean.TRUE.equals(puedeValidar)) {
-                    authorities.add(new SimpleGrantedAuthority("PUEDE_VALIDAR_CITA"));
+                // Y quien puede marcar que paso con una cita: asistio, no asistio o "nadie la
+                // marco". Es el permiso que antes era el del visto bueno.
+                Boolean puedeMarcar = claims.get("puedeMarcarCita", Boolean.class);
+                if (puedeMarcar == null) {
+                    // Token emitido antes del cambio. Ahi marcar iba con el permiso de crear
+                    // citas, asi que se respeta lo que ese usuario podia hacer cuando inicio
+                    // sesion: si no, el despliegue deja a media clinica sin poder marcar el dia
+                    // hasta que a cada uno se le ocurra volver a entrar. Los tokens duran horas,
+                    // asi que esto se apaga solo.
+                    puedeMarcar = authorities.stream()
+                            .anyMatch(a -> "MODULO_CITAS_CREAR".equals(a.getAuthority()));
+                }
+                if (Boolean.TRUE.equals(puedeMarcar)) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_MARCAR_CITA"));
                 }
 
                 // Tambien por ROL: quien puede corregir una atencion ya registrada.

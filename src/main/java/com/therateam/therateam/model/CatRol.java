@@ -54,15 +54,18 @@ public class CatRol {
     private Boolean puedeEditarHoraCorte;
 
     /**
-     * Si el rol puede dar el visto bueno a una cita (doble validacion).
+     * Si el rol puede marcar QUE PASO con una cita: asistio, no asistio o "nadie la marco".
      *
-     * Aparte del "editar" del modulo Citas a proposito, y por el motivo que hace util la doble
-     * validacion: quien carga la cita no deberia ser quien la aprueba. Si este permiso fuera
-     * parte de editar, cualquiera que puede cargar podria validarse a si mismo y el segundo par
-     * de ojos no existiria.
+     * Es el permiso que nacio para el visto bueno, con el nombre de lo que hace ahora. El visto
+     * bueno se habia pedido para asegurar si el paciente vino, y eso lo dicen mejor las tres
+     * respuestas; la columna se renombro en vez de crear otra para conservar quien lo tenia.
+     *
+     * Va aparte del "crear" del modulo Citas a proposito. Hasta ahora marcar iba con ese mismo
+     * permiso, asi que no habia forma de dejar que alguien agendara sin dejarle ademas decir que
+     * paso con la cita — que es justo lo que mueve el dinero y las sesiones del paquete.
      */
-    @Column(name = "puede_validar_cita")
-    private Boolean puedeValidarCita;
+    @Column(name = "puede_marcar_cita")
+    private Boolean puedeMarcarCita;
 
     /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
