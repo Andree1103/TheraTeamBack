@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Bateria de escenarios de dinero contra una copia de produccion.
-API=http://localhost:8081
+# El puerto se cambia sin tocar el archivo: API=http://localhost:8080 bash db/pruebas-dinero.sh
+API="${API:-http://localhost:8081}"
 PG="/c/Program Files/PostgreSQL/18/bin/psql.exe"
 export PGPASSWORD=a1n2d3r4e5e6 PGCLIENTENCODING=UTF8
 # Contra que copia se corre. Se cambia sin tocar el archivo:
@@ -133,7 +134,9 @@ read C8 P8 <<< $(nueva_cita 50); ponerSaldo $P8 0
 post /api/pagos "{\"paciente\":{\"id\":$P8},\"cita\":{\"id\":$C8},\"metodo\":{\"id\":1},\"montoRecibido\":50,\"montoAplicado\":50}" >/dev/null
 post /api/atenciones/inasistencia "{\"citaId\":$C8,\"motivo\":\"no vino\",\"devolver\":true}" >/dev/null
 check "saldo devuelto" "50.00" "$(saldo $P8)"
-check "la cita queda sin pago" "SIN_PAGO" "$(epago $C8)"
+# A_FAVOR, no SIN_PAGO: la cita deja dicho que su dinero se le quedo al paciente a favor
+# (ver el caso 17). Esta expectativa se quedo vieja cuando se separaron las dos marcas.
+check "la cita queda marcada a favor" "A_FAVOR" "$(epago $C8)"
 
 echo "== 10. Eliminar un pago -> baja del saldo justo lo que dejo =="
 read C9 P9 <<< $(nueva_cita 50); ponerSaldo $P9 0
@@ -241,11 +244,18 @@ check "saldo tras cobrar con saldo (80-50)" "30.00" "$(saldo $P8)"
 check "la cita queda pagada" "PAGADA" "$(epago $C8)"
 post "/api/citas/$C8/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
 check "saldo tras anular (vuelven los 50)" "80.00" "$(saldo $P8)"
-# Y lo de "Sin pago" sigue sin inventar credito.
-read C9b P9b <<< $(nueva_cita 50); ponerSaldo $P9b 0
-post /api/pagos "{\"paciente\":{\"id\":$P9b},\"cita\":{\"id\":$C9b},\"metodo\":{\"id\":9},\"montoRecibido\":50}" >/dev/null
-post "/api/citas/$C9b/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
-check "'Sin pago' sigue sin generar saldo" "0.00" "$(saldo $P9b)"
+# Y lo de "Sin pago" sigue sin inventar credito. El id del medio se busca: no esta en todas
+# las copias, y mandarlo a pelo hacia que el cobro se rechazara por clave foranea — el check
+# veia el saldo en 0 y pasaba sin haber probado nada.
+MSINPAGO=$(q "SELECT id FROM cat_metodos_pago WHERE key ILIKE '%SIN%PAGO%' OR nombre ILIKE '%sin pago%' LIMIT 1")
+if [ -n "$MSINPAGO" ]; then
+  read C9b P9b <<< $(nueva_cita 50); ponerSaldo $P9b 0
+  post /api/pagos "{\"paciente\":{\"id\":$P9b},\"cita\":{\"id\":$C9b},\"metodo\":{\"id\":$MSINPAGO},\"montoRecibido\":50}" >/dev/null
+  post "/api/citas/$C9b/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
+  check "'Sin pago' sigue sin generar saldo" "0.00" "$(saldo $P9b)"
+else
+  echo "  (salta: esta copia no tiene el medio 'Sin pago')"
+fi
 
 echo "== 16. Devolver dinero: ni doble, ni dentro de la caja del dia =="
 # Pago mixto: 20 en efectivo + 30 de su saldo. Al devolver, por el cajon salen 20 — los 30 ya
@@ -273,7 +283,9 @@ check "saldo consumido"      "0.00"   "$(saldo $PB)"
 post "/api/citas/$CB/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
 check "los 50 enteros quedan a favor" "50.00" "$(saldo $PB)"
 check "no sale nada del cajon"        "0"     "$(q "SELECT count(*) FROM pagos WHERE cita_id=$CB AND es_devolucion")"
-check "la cita vuelve a sin pago"     "SIN_PAGO" "$(epago $CB)"
+# No SIN_PAGO: desde que la cita dice QUE se hizo con su dinero, "a favor" tiene su propia
+# marca. SIN_PAGO es para cuando no hubo credito que reconocer (un cobro que no movio dinero).
+check "la cita queda marcada a favor" "A_FAVOR" "$(epago $CB)"
 
 echo "== 18. Borrar un cobro adicional NO le regala saldo al paciente =="
 # El cobro adicional no toca el saldo. Pero grababa saldo_generado = 0 con saldo_previo = lo que
@@ -287,6 +299,96 @@ check "saldo intacto tras la venta" "25.00" "$(saldo $PC)"
 check "la fila no finge consumo"    "0.00"  "$(q "SELECT (COALESCE(saldo_previo,0)-COALESCE(saldo_generado,0))::numeric(12,2) FROM pagos WHERE id=$PIDA")"
 curl -s -o /dev/null -X DELETE "$API/api/pagos/$PIDA" -H "Authorization: Bearer $TOK"
 check "saldo intacto tras borrarla" "25.00" "$(saldo $PC)"
+
+echo "== 19. Anular una sesion de un paquete: devolver el dinero no deja deuda =="
+# El caso de LIAM: paquete de 2 sesiones pagado entero. Se anula una cita y se le devuelve su
+# dinero. La deuda se lee en todas las pantallas como "lo que vale el paquete menos lo cobrado";
+# devolver bajaba lo cobrado y dejaba el valor intacto, asi que el paquete pasaba a reclamar
+# justo lo que se acababa de devolver. Ahora la sesion sale del paquete con su dinero.
+read P T TT ET <<< $(q "SELECT c.paciente_id||' '||c.terapeuta_id||' '||c.tipo_terapia_id||' '||(SELECT id FROM cat_estados_tratamiento WHERE key='ACTIVO') FROM citas c WHERE c.terapeuta_id IS NOT NULL AND c.tipo_terapia_id IS NOT NULL ORDER BY c.id DESC LIMIT 1")
+paq() { # $1 sesiones, $2 precio -> id
+  curl -s -X POST "$API/api/tratamientos" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+    -d "{\"paciente\":{\"id\":$P},\"terapeuta\":{\"id\":$T},\"tipoTerapia\":{\"id\":\"$TT\"},\"nombre\":\"bateria anular\",\"totalSesiones\":$1,\"precioPorSesion\":$2,\"estado\":{\"id\":$ET},\"fechaInicio\":\"2026-11-04\"}" \
+    | python -c "import sys,json;print(json.load(sys.stdin)['id'])"
+}
+# Las citas del paquete tal como quedan al agendarlas: cada sesion con su cita y su cita_activa.
+citasDe() { # $1 paquete, $2 cuantas, $3 precio -> ids por numero de sesion
+  x "INSERT INTO sesiones (tratamiento_id, numero, estado_id, created_at, updated_at)
+     SELECT $1, g, (SELECT id FROM cat_estados_sesion LIMIT 1), now(), now() FROM generate_series(1,$2) g;
+     INSERT INTO citas (paciente_id, terapeuta_id, tipo_terapia_id, sesion_id, fecha_inicio, fecha_fin,
+                        duracion_minutos, estado_id, modalidad_id, estado_pago_id, precio, monto_pagado,
+                        eliminado, created_at, updated_at, recordatorio_enviado)
+     SELECT t.paciente_id, t.terapeuta_id, t.tipo_terapia_id, s.id,
+            now() + interval '20 day' + (s.numero * interval '1 hour'),
+            now() + interval '20 day' + (s.numero * interval '1 hour') + interval '40 minute', 40,
+            (SELECT id FROM cat_estados_cita WHERE key='PROGRAMADA'), (SELECT id FROM cat_modalidades LIMIT 1),
+            (SELECT id FROM cat_estados_pago_cita WHERE key='SIN_PAGO'), $3, 0, false, now(), now(), false
+       FROM sesiones s JOIN tratamientos t ON t.id=s.tratamiento_id WHERE s.tratamiento_id=$1;
+     UPDATE sesiones s SET cita_activa_id=(SELECT c.id FROM citas c WHERE c.sesion_id=s.id) WHERE s.tratamiento_id=$1;"
+  q "SELECT string_agg(c.id::text,' ' ORDER BY s.numero) FROM sesiones s JOIN citas c ON c.sesion_id=s.id WHERE s.tratamiento_id=$1"
+}
+deudaPaq()    { q "SELECT (monto_total - total_cobrado)::numeric(12,2) FROM tratamientos WHERE id=$1"; }
+sesionesPaq() { q "SELECT total_sesiones FROM tratamientos WHERE id=$1"; }
+cobradoPaq()  { q "SELECT total_cobrado::numeric(12,2) FROM tratamientos WHERE id=$1"; }
+pagarSesion() { # $1 paquete, $2 cita, $3 importe
+  post /api/pagos "{\"paciente\":{\"id\":$P},\"tratamiento\":{\"id\":$1},\"cita\":{\"id\":$2},\"metodo\":{\"id\":1},\"montoRecibido\":$3}" >/dev/null
+}
+
+PQ=$(paq 2 50); read K1 K2 <<< $(citasDe $PQ 2 50); ponerSaldo $P 0
+pagarSesion $PQ $K1 50; pagarSesion $PQ $K2 50
+check "paquete pagado, sin deuda" "0.00" "$(deudaPaq $PQ)"
+post "/api/citas/$K1/anular?devolucion=DINERO&motivo=prueba" '{}' >/dev/null
+check "el paquete se queda en 1 sesion"   "1"        "$(sesionesPaq $PQ)"
+check "y sin deuda tras devolver"         "0.00"     "$(deudaPaq $PQ)"
+check "cobrado tras devolver"             "50.00"    "$(cobradoPaq $PQ)"
+check "salieron 50 por el cajon"          "50.00"    "$(q "SELECT COALESCE(sum(monto_recibido),0)::numeric(12,2) FROM pagos WHERE tratamiento_id=$PQ AND es_devolucion")"
+check "la cita dice que se devolvio"      "DEVUELTO" "$(epago $K1)"
+check "al paciente no se le regalo saldo" "0.00"     "$(saldo $P)"
+
+echo "== 20. La misma anulacion dejando el dinero A FAVOR: credito si, deuda no =="
+# Antes salian las dos cosas a la vez en la ficha: S/ 50 a favor y S/ 50 de deuda por la misma
+# sesion. El credito es de verdad; la deuda era el reembolso contado al reves.
+PQB=$(paq 2 50); read L1 L2 <<< $(citasDe $PQB 2 50); ponerSaldo $P 0
+pagarSesion $PQB $L1 50; pagarSesion $PQB $L2 50
+post "/api/citas/$L1/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
+check "los 50 le quedan a favor" "50.00" "$(saldo $P)"
+check "y el paquete sin deuda"   "0.00"  "$(deudaPaq $PQB)"
+check "nada salio del cajon"     "0"     "$(q "SELECT count(*) FROM pagos WHERE tratamiento_id=$PQB AND es_devolucion")"
+
+echo "== 21. Cobro PARCIAL anulado: queda por cobrar la sesion que sigue en pie, no las dos =="
+# El paquete baja de una sesion en una, no por el importe devuelto: lo que cambia es que esa
+# sesion no se va a dar. 2 de 50 con 30 cobrados sobre la primera; al anularla y devolver los 30,
+# lo pendiente son los 50 de la sesion que le queda. Antes decia 100.
+PQC=$(paq 2 50); read M1 M2 <<< $(citasDe $PQC 2 50); ponerSaldo $P 0
+pagarSesion $PQC $M1 30
+check "deuda del paquete (100-30)" "70.00" "$(deudaPaq $PQC)"
+post "/api/citas/$M1/anular?devolucion=DINERO&motivo=prueba" '{}' >/dev/null
+check "queda 1 sesion"             "1"     "$(sesionesPaq $PQC)"
+check "y 50 por cobrar"            "50.00" "$(deudaPaq $PQC)"
+
+echo "== 22. Inasistencia CON devolucion de una sesion de paquete: tampoco deja deuda =="
+# El dinero sale por el mismo sitio (revertirDinero), asi que le valia el mismo error. El paciente
+# no vino y se le devolvio lo suyo: el paquete deja de cobrar esa sesion, no la pasa a deuda.
+PQD=$(paq 2 50); read N1 N2 <<< $(citasDe $PQD 2 50); ponerSaldo $P 0
+pagarSesion $PQD $N1 50; pagarSesion $PQD $N2 50
+post /api/atenciones/inasistencia "{\"citaId\":$N1,\"motivo\":\"no vino\",\"devolver\":true}" >/dev/null
+check "queda 1 sesion" "1"     "$(sesionesPaq $PQD)"
+check "sin deuda"      "0.00"  "$(deudaPaq $PQD)"
+check "los 50 a favor" "50.00" "$(saldo $P)"
+
+echo "== 23. Anular una sesion que nadie pago no encoge el paquete, y el hueco se reagenda =="
+# El paquete solo deja de cobrar una sesion cuando su dinero sale. Sin reembolso no hay nada que
+# justifique encogerlo, y anular tiene que seguir liberando el cupo para volver a agendar.
+MOD=$(q "SELECT id FROM cat_modalidades LIMIT 1")
+PQE=$(paq 2 50); read O1 O2 <<< $(citasDe $PQE 2 50)
+post "/api/citas/$O1/anular?devolucion=SALDO&motivo=prueba" '{}' >/dev/null
+check "sigue siendo de 2 sesiones"   "2" "$(sesionesPaq $PQE)"
+check "el hueco queda libre"         "1" "$(q "SELECT count(*) FROM sesiones WHERE tratamiento_id=$PQE AND cita_activa_id IS NULL")"
+check "se puede agendar en el hueco" "201" "$(post /api/citas/rapida "{\"pacienteId\":$P,\"terapeutaId\":$T,\"tipoTerapiaId\":$TT,\"tratamientoId\":$PQE,\"modalidadId\":$MOD,\"fechaInicio\":\"2026-12-01T09:00:00\",\"fechaFin\":\"2026-12-01T09:40:00\",\"duracionMinutos\":40}")"
+# Y donde SI se encogio, el hueco no se vuelve a llenar solo: el paquete del caso 19 bajo a una
+# sesion y ya la tiene agendada. Antes se contaban filas de sesion, el hueco liberado se
+# reutilizaba y el paquete acababa con 2 sesiones agendadas cobrando una sola.
+check "en el encogido ya no cabe otra" "400" "$(post /api/citas/rapida "{\"pacienteId\":$P,\"terapeutaId\":$T,\"tipoTerapiaId\":$TT,\"tratamientoId\":$PQ,\"modalidadId\":$MOD,\"fechaInicio\":\"2026-12-02T09:00:00\",\"fechaFin\":\"2026-12-02T09:40:00\",\"duracionMinutos\":40}")"
 
 echo
 echo "RESULTADO: $OK correctos, $KO fallos"

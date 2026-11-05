@@ -826,6 +826,7 @@ public class CitaService {
             if (montoDeEstaSesion.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal totalCobrado = tratamiento.getTotalCobrado() != null ? tratamiento.getTotalCobrado() : BigDecimal.ZERO;
                 tratamiento.setTotalCobrado(totalCobrado.subtract(montoDeEstaSesion).max(BigDecimal.ZERO));
+                elPaqueteDejaDeCobrarEsaSesion(tratamiento);
                 tratamientoRepository.save(tratamiento);
 
                 if (devolverComoDinero) {
@@ -871,6 +872,35 @@ public class CitaService {
         }
 
         marcarQueSeHizoConElDinero(cita, devolverComoDinero, habiaCobrado, saldoAntes);
+    }
+
+    /**
+     * Una sesión cuyo dinero sale del paquete sale con él: el paquete deja de cobrarla.
+     *
+     * La deuda del paciente se lee en todas las pantallas como «lo que vale el paquete menos lo
+     * cobrado», y el valor del paquete es sus sesiones por el precio. Devolver el dinero de una
+     * sesión baja lo cobrado y dejaba el valor intacto, así que el paquete pasaba a reclamar
+     * justo lo que se acababa de devolver: se le devolvían S/ 50 a un paciente y el sistema
+     * decía que debía S/ 50. Un reembolso no puede crear una deuda — el mismo error que ya se
+     * arregló al anular un paquete entero (ver {@link #cerrarPaqueteAnulado}), que aquí seguía
+     * vivo para una sesión suelta.
+     *
+     * Baja de una en una, no por el importe devuelto: lo que cambia es que la sesión no se va a
+     * dar, y eso vale una sesión aunque lo cobrado fuera parcial. Un paquete de 2 sesiones de
+     * S/ 50 con S/ 30 cobrados sobre la primera, al anularla y devolver los S/ 30, queda en una
+     * sesión de S/ 50 por cobrar: que es lo que el paciente tiene pendiente de verdad.
+     *
+     * Nunca por debajo de las atendidas: «sesiones pendientes» se calcula restando las dos y
+     * dejarlo en negativo diría un disparate.
+     *
+     * Solo se llama cuando había dinero sobre la sesión. Anular una sesión que nadie pagó no
+     * mueve el tamaño del paquete: ahí no hay reembolso que lo justifique, el hueco se queda
+     * libre y se puede volver a agendar, que es como se ha usado siempre.
+     */
+    private void elPaqueteDejaDeCobrarEsaSesion(Tratamiento t) {
+        int total = t.getTotalSesiones() != null ? t.getTotalSesiones() : 0;
+        int atendidas = t.getSesionesAtendidas() != null ? t.getSesionesAtendidas() : 0;
+        t.setTotalSesiones(Math.max(total - 1, atendidas));
     }
 
     private BigDecimal saldoDe(Paciente paciente) {
@@ -1100,23 +1130,31 @@ public class CitaService {
      * Da la sesión donde debe engancharse una cita nueva de este paquete. Si una sesión anterior
      * quedó libre (su cita fue anulada — {@link #anularCitaInterna} desvincula pero no borra la
      * Sesion), se reutiliza esa en vez de crear una nueva; así anular de verdad libera cupo para
-     * reprogramar. Solo se crea una Sesion nueva si no hay ninguna libre Y el paquete todavía no
-     * llegó a su total de sesiones contratadas — si no, se rechaza (evita que un paquete de 5
-     * termine con 6+ sesiones creadas).
+     * reprogramar. Si no hay ninguna libre, se crea. En los dos casos hace falta que el paquete
+     * tenga sitio: nunca más sesiones ocupadas que las que el paquete dice tener (evita que un
+     * paquete de 5 termine con 6 sesiones agendadas y 5 cobradas).
      */
     private Sesion obtenerOCrearSesionDisponible(Tratamiento tratamiento) {
         List<Sesion> sesiones = sesionRepository.findByTratamientoId(tratamiento.getId());
+
+        // El tope se mide por sesiones OCUPADAS, no por filas de sesion. Son lo mismo mientras
+        // nadie anula nada: cada fila tiene su cita. Dejan de serlo cuando una sesion se anula
+        // con devolucion y el paquete deja de cobrarla (ver elPaqueteDejaDeCobrarEsaSesion): la
+        // fila se queda ahi, libre, y contando filas el hueco se volvia a llenar — un paquete
+        // que acababa de bajar a 1 sesion aceptaba una cita nueva y volvia a tener 2, cobrando
+        // una sola. Contando ocupadas, el hueco liberado solo se reutiliza si el paquete
+        // todavia tiene sitio.
+        int totalSesiones = tratamiento.getTotalSesiones() != null ? tratamiento.getTotalSesiones() : 0;
+        long ocupadas = sesiones.stream().filter(s -> s.getCitaActiva() != null).count();
+        if (ocupadas >= totalSesiones) {
+            throw new IllegalArgumentException("El paquete ya tiene sus " + totalSesiones
+                    + " sesiones agendadas. Si el paciente va a tener otra, subele el total al paquete.");
+        }
 
         Optional<Sesion> libre = sesiones.stream()
                 .filter(s -> s.getCitaActiva() == null)
                 .min(java.util.Comparator.comparing(Sesion::getNumero));
         if (libre.isPresent()) return libre.get();
-
-        int totalSesiones = tratamiento.getTotalSesiones() != null ? tratamiento.getTotalSesiones() : 0;
-        if (sesiones.size() >= totalSesiones) {
-            throw new IllegalArgumentException("El paquete ya tiene todas sus sesiones creadas ("
-                    + sesiones.size() + "/" + totalSesiones + ").");
-        }
 
         CatEstadoSesion estadoSesion = estadoSesionInicial();
         Sesion nueva = new Sesion();
