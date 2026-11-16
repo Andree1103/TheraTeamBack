@@ -49,6 +49,7 @@ public class CitaService {
     private final SaldoMovimientoService saldoMovimientoService;
     private final com.therateam.therateam.repository.CitaHistorialRepository citaHistorialRepository;
     private final UsuarioRepository usuarioRepository;
+    private final CuentaCreditoService cuentaCreditoService;
 
     /**
      * Las claves que significan "esta cita ya no va".
@@ -392,7 +393,20 @@ public class CitaService {
         citaHistorialRepository.save(h);
     }
 
-    public Cita save(Cita cita) { return citaRepository.save(cita); }
+    /**
+     * El POST /api/citas crudo. Una cita que llega con cuenta de credito en el cuerpo tiene que
+     * pasar por las mismas reglas que los otros tres caminos: el permiso, el no-autocredito y el
+     * amarre del paciente.
+     *
+     * Sin esto, el camino mas directo del API seria tambien el unico sin control: bastaria mandar
+     * {"cuentaCredito":{"id":5}} para colgarle una deuda a cualquiera.
+     */
+    public Cita save(Cita cita) {
+        if (cita.getCuentaCredito() != null && cita.getCuentaCredito().getId() != null) {
+            cuentaCreditoService.aplicarACita(cita, cita.getCuentaCredito().getId());
+        }
+        return citaRepository.save(cita);
+    }
 
     /**
      * La clave del estado que viene en el cuerpo de un PUT.
@@ -926,7 +940,16 @@ public class CitaService {
     private static boolean tieneDineroAplicado(String estadoPagoKey) {
         return "PAGADA".equals(estadoPagoKey)
             || "PARCIAL".equals(estadoPagoKey)
-            || "DESCONTADA".equals(estadoPagoKey);
+            || "DESCONTADA".equals(estadoPagoKey)
+            // A_CREDITO no es dinero aplicado: es dinero que la clinica decidio esperar, con un
+            // titular que responde. Cuenta aqui porque esta lista contesta "se puede marcar
+            // Asistida", y el sentido de la regla es que no quede atendida una sesion que nadie
+            // va a cobrar. Una cita a credito SI se va a cobrar, y se sabe a quien.
+            //
+            // Era el bloqueo que no dejaba salida al caso de la clinica: sin esta linea, el
+            // familiar del terapeuta se atiende y la cita no se puede cerrar, que es lo que
+            // empujaba a cobrar un efectivo que no entro o a dejarla en Programada para siempre.
+            || "A_CREDITO".equals(estadoPagoKey);
     }
 
     private static String capitalizar(String t) {
@@ -1252,6 +1275,12 @@ public class CitaService {
         cita.setNotasPrevias(req.getNotasPrevias());
         cita.setLinkVideollamada(req.getLinkVideollamada());
         cita.setTipoRecurrencia(req.getTipoRecurrencia() != null ? req.getTipoRecurrencia() : "EVENTUAL");
+
+        // A credito: deja la cita en A_CREDITO y la deuda a cargo del titular de la cuenta.
+        // Va antes del save para que el estado de pago se guarde ya correcto, y despues del
+        // setEstadoPago de arriba para que mande sobre el SIN_PAGO por omision.
+        cuentaCreditoService.aplicarACita(cita, req.getCuentaCreditoId());
+
         cita = citaRepository.save(cita);
 
         if (sesion != null) {
@@ -1436,7 +1465,7 @@ public class CitaService {
             resultado.add(crearCitaParaPaciente(p1, terapeuta, tipoTerapia, estadoCita, modalidad,
                     req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
                     req.getPrecioPorSesion(), req.getTratamientoId(), tipoRecurrencia,
-                    req.getLoteMasivoId(), req.getTotalSesionesPlan()));
+                    req.getLoteMasivoId(), req.getTotalSesionesPlan(), req.getCuentaCreditoId()));
         }
 
         // Acompañantes: paciente2 (compatibilidad) mas la lista, que es lo que usa el front
@@ -1469,7 +1498,14 @@ public class CitaService {
             // cambia entre los pacientes del bloque es la terapia que queda registrada.
             resultado.add(crearCitaParaPaciente(acompanante, terapeuta, tipoDelAcompanante, estadoCita, modalidad,
                     req.getFechaInicio(), fechaFin, req.getDuracionMinutos(), req.getObservacion(),
-                    req.getPrecioPorSesion(), null, tipoRecurrencia, null, null));
+                    req.getPrecioPorSesion(), null, tipoRecurrencia, null, null,
+                    // El acompanante NO hereda el credito del paciente principal.
+                    //
+                    // Compartir el bloque no lo hace de la misma familia: es otra persona, con
+                    // otro responsable, y colgarle la deuda a la cuenta del primero porque
+                    // coincidieron en el horario seria cobrarle a quien no pidio nada. Si tambien
+                    // va a credito, se le carga desde su propia cita.
+                    null));
         }
 
         return resultado;
@@ -1484,7 +1520,8 @@ public class CitaService {
                                            Long tratamientoIdExplicito,
                                            String tipoRecurrencia,
                                            String loteMasivoId,
-                                           Integer loteTotalPlaneado) {
+                                           Integer loteTotalPlaneado,
+                                           Long cuentaCreditoId) {
         validarDisponibilidad(terapeuta, fechaInicio, fechaFin,
                 tipoTerapia != null ? tipoTerapia.getMaxPacientes() : null, null);
         validarPacienteDisponible(paciente, fechaInicio, fechaFin, null);
@@ -1531,6 +1568,11 @@ public class CitaService {
         cita.setTipoRecurrencia(tipoRecurrencia != null ? tipoRecurrencia : "EVENTUAL");
         cita.setLoteMasivoId(loteMasivoId);
         cita.setLoteTotalPlaneado(loteTotalPlaneado);
+
+        // A credito. En un lote masivo esto corre por cada cita del lote, asi que las N quedan
+        // a cargo de la misma cuenta — que es como se pidio: se fia el bloque entero, no una.
+        cuentaCreditoService.aplicarACita(cita, cuentaCreditoId);
+
         cita = citaRepository.save(cita);
 
         if (sesion != null) {
@@ -1599,7 +1641,12 @@ public class CitaService {
         BigDecimal debe   = precio != null ? precio : BigDecimal.ZERO;
         BigDecimal pagado = cita.getMontoPagado() != null ? cita.getMontoPagado() : BigDecimal.ZERO;
         String key;
-        if (pagado.compareTo(BigDecimal.ZERO) <= 0) key = "SIN_PAGO";
+        if (pagado.compareTo(BigDecimal.ZERO) <= 0) {
+            // Sin nada pagado, una cita a credito NO es "Sin pago": se debe a proposito y se sabe
+            // a quien cobrarselo. Si se derivara a SIN_PAGO, corregirle el precio a una cita a
+            // credito le borraria la marca y volveria a mezclarse con las 642 que no son deuda.
+            key = cita.getCuentaCredito() != null ? "A_CREDITO" : "SIN_PAGO";
+        }
         else if (pagado.compareTo(debe) >= 0)       key = "PAGADA";
         else                                        key = "PARCIAL";
         catEstadoPagoCitaRepository.findByKey(key).ifPresent(cita::setEstadoPago);

@@ -47,6 +47,17 @@ public class Asiento {
     @Column(name = "usuario_id")
     private Long usuarioId;
 
+    /**
+     * La cuenta de crédito a la que pertenece este movimiento, cuando la hay.
+     *
+     * pacienteId sigue siendo obligatorio y sigue siendo el paciente que se atendió, para que su
+     * estado de cuenta se lea bien ("esta cita quedó a cargo de la cuenta de Rocío"). Este campo
+     * es lo que permite la otra vista — sumar las deudas de los tres familiares en el estado de
+     * cuenta de la cuenta — sin reconstruirla pasando por los amarres.
+     */
+    @Column(name = "cuenta_credito_id")
+    private Long cuentaCreditoId;
+
     private String nota;
 
     @Column(name = "created_at")

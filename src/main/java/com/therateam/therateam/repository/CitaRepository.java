@@ -393,4 +393,9 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
                                     @Param("tipoTerapiaId") Long tipoTerapiaId,
                                     @Param("desde") java.time.LocalDateTime desde,
                                     @Param("estadosFuera") java.util.Collection<String> estadosFuera);
+
+    /** Las citas sueltas cargadas a una cuenta de credito. Solo salen las sueltas porque la base
+     *  impide cargar una cita de paquete (ck_citas_credito_solo_sueltas): su deuda la lleva el
+     *  tratamiento, y contarla por las dos puntas sumaria el mismo paquete dos veces. */
+    List<Cita> findByCuentaCreditoIdAndEliminadoFalse(Long cuentaCreditoId);
 }

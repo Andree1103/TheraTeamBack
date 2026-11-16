@@ -38,4 +38,12 @@ public class CitaRapidaRequest {
     private BigDecimal precioCita;     // override del precio por sesión para este pago
     private Long metodoPagoId;
     private boolean pagadoInmediato = false;  // false=PENDIENTE, true=PAGADA
+
+    /**
+     * Opcional: cuenta de credito a la que se carga esta cita.
+     *
+     * Si viene, la cita queda A_CREDITO y la deuda pasa a ser de esa cuenta en vez
+     * del paciente. Pide el permiso PUEDE_DAR_CREDITO, y nadie puede cargar a su propia cuenta.
+     */
+    private Long cuentaCreditoId;
 }

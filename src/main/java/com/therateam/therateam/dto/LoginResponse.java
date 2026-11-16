@@ -29,4 +29,7 @@ public class LoginResponse {
     private boolean puedeEditarHoraCorte;
     /** Viene del ROL: si es false, el front no ofrece marcar que paso con una cita. */
     private boolean puedeMarcarCita;
+    /** Viene del ROL: si es false, el front no ofrece la opcion "a credito" al crear una cita,
+     *  un lote masivo o un paquete, ni deja administrar las cuentas de credito. */
+    private boolean puedeDarCredito;
 }

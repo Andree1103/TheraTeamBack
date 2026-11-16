@@ -52,4 +52,12 @@ public class CitaConPacienteRequest {
      * catálogo de Paquetes, solo permite luego contar cuántas del grupo faltan/ya se atendieron.
      */
     private String loteMasivoId;
+
+    /**
+     * Opcional: cuenta de credito a la que se carga esta cita (o todas las del lote masivo).
+     *
+     * Si viene, cada cita creada queda A_CREDITO y la deuda pasa a ser de esa cuenta en vez
+     * del paciente. Pide el permiso PUEDE_DAR_CREDITO, y nadie puede cargar a su propia cuenta.
+     */
+    private Long cuentaCreditoId;
 }

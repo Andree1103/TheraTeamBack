@@ -68,6 +68,26 @@ public class CatRol {
     private Boolean puedeMarcarCita;
 
     /**
+     * Si el rol puede atender una cita a credito —sin cobrarla— y administrar las cuentas de
+     * credito.
+     *
+     * Aparte del "crear" y del "editar" del modulo Citas a proposito: dar credito no es agendar
+     * ni cobrar, es decidir que la clinica se queda esperando el dinero. Mismo criterio que
+     * puedeMarcarCita.
+     *
+     * Arranca solo en ADMIN y Encargado. Es una capacidad nueva —nadie la tenia antes— asi que no
+     * hay trabajo que se rompa por no darla de entrada, y abrirla a Recepcionista desde
+     * Seguridad > Roles es un clic cuando la clinica lo decida.
+     *
+     * NADIE SE DA CREDITO A SI MISMO: este permiso no alcanza para eso. Un usuario no puede
+     * cargar una cita contra su propia cuenta, lo tenga o no — es la deuda de su familia, y quien
+     * se beneficia no puede ser quien la autoriza. Esa regla va en el service, porque depende de
+     * quien esta logueado.
+     */
+    @Column(name = "puede_dar_credito")
+    private Boolean puedeDarCredito;
+
+    /**
      * Un permiso por módulo al que este rol tiene acceso — que exista la fila ya da acceso de
      * lectura/navegación; crear/editar/eliminar son flags independientes (las lecturas de datos
      * de referencia cross-módulo siguen abiertas a cualquier autenticado, ver SecurityConfig).

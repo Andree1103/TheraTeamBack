@@ -293,7 +293,7 @@ public class PagoService {
             BigDecimal montoPagadoNuevo  = montoPagadoActual.add(montoAplicado);
             citaAsociada.setMontoPagado(montoPagadoNuevo);
             citaAsociada.setEstadoPago(catEstadoPagoCitaRepository.findByKey(
-                    estadoPagoPorMonto(montoPagadoNuevo, citaAsociada.getPrecio())).orElse(null));
+                    estadoPagoPorMonto(montoPagadoNuevo, citaAsociada.getPrecio(), citaAsociada)).orElse(null));
             citaRepository.save(citaAsociada);
         }
 
@@ -353,7 +353,7 @@ public class PagoService {
             BigDecimal montoPagadoNuevo = montoPagadoActual.add(monto).min(precio);
             cita.setMontoPagado(montoPagadoNuevo);
             cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey(
-                    estadoPagoPorMonto(montoPagadoNuevo, precio)).orElse(null));
+                    estadoPagoPorMonto(montoPagadoNuevo, precio, cita)).orElse(null));
             citaRepository.save(cita);
         });
     }
@@ -377,16 +377,31 @@ public class PagoService {
             BigDecimal montoPagadoNuevo = montoPagadoActual.add(aAplicar);
             cita.setMontoPagado(montoPagadoNuevo);
             cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey(
-                    estadoPagoPorMonto(montoPagadoNuevo, precioCita)).orElse(null));
+                    estadoPagoPorMonto(montoPagadoNuevo, precioCita, cita)).orElse(null));
             citaRepository.save(cita);
             restante = restante.subtract(aAplicar);
         }
     }
 
     private String estadoPagoPorMonto(BigDecimal montoPagado, BigDecimal precio) {
+        return estadoPagoPorMonto(montoPagado, precio, null);
+    }
+
+    /**
+     * El estado de pago que le toca a una cita segun cuanto se le lleva cobrado.
+     *
+     * Con la cita delante se puede distinguir el caso que importa: sin nada pagado, una cita A
+     * CREDITO no es "Sin pago". Se debe a proposito y hay un titular que responde. Si volviera a
+     * SIN_PAGO, deshacer el cobro de un credito —borrar el pago, o anularlo— le borraria la marca
+     * y la deuda se mezclaria otra vez con las 642 citas en SIN_PAGO que no son deuda de nadie.
+     *
+     * La deuda en si no se perderia (se calcula precio - montoPagado sobre las citas de la
+     * cuenta), pero la pantalla diria una cosa y el reporte otra.
+     */
+    private String estadoPagoPorMonto(BigDecimal montoPagado, BigDecimal precio, Cita cita) {
         if (montoPagado.compareTo(precio) >= 0) return "PAGADA";
         if (montoPagado.compareTo(BigDecimal.ZERO) > 0) return "PARCIAL";
-        return "SIN_PAGO";
+        return cita != null && cita.getCuentaCredito() != null ? "A_CREDITO" : "SIN_PAGO";
     }
 
     /** Texto corto que identifica contra que se movio el saldo, para el historial de Adelantos. */
@@ -637,7 +652,7 @@ public class PagoService {
             cita.setMontoPagado(nuevo);
             // Con precio 0 no se puede usar estadoPagoPorMonto: su regla "pagado >= precio" daría
             // PAGADA con 0 de 0, que es justo el estado equivocado del que se venía.
-            String estado = precio.compareTo(BigDecimal.ZERO) <= 0 ? "SIN_PAGO" : estadoPagoPorMonto(nuevo, precio);
+            String estado = precio.compareTo(BigDecimal.ZERO) <= 0 ? "SIN_PAGO" : estadoPagoPorMonto(nuevo, precio, cita);
             cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey(estado).orElse(null));
             citaRepository.save(cita);
         });
@@ -929,7 +944,7 @@ public class PagoService {
                     BigDecimal nuevo = montoPagado.subtract(montoAplicado).max(BigDecimal.ZERO);
                     cita.setMontoPagado(nuevo);
                     cita.setEstadoPago(catEstadoPagoCitaRepository.findByKey(
-                            estadoPagoPorMonto(nuevo, cita.getPrecio())).orElse(null));
+                            estadoPagoPorMonto(nuevo, cita.getPrecio(), cita)).orElse(null));
                     citaRepository.save(cita);
                 });
             }

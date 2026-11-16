@@ -94,6 +94,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PUEDE_MARCAR_CITA"));
                 }
 
+                // Y quien puede dar credito: atender o vender sin cobrar, y que la clinica se
+                // quede esperando el dinero. Va aparte de crear y de editar citas a proposito —
+                // agendar no es decidir que no se cobra.
+                //
+                // Sin fallback para tokens viejos, al contrario que puedeMarcarCita: ahi habia un
+                // permiso anterior que respetar, aqui la capacidad no existia. Un token emitido
+                // antes de este cambio simplemente no puede dar credito, y al volver a entrar ya
+                // lo trae.
+                Boolean puedeDarCredito = claims.get("puedeDarCredito", Boolean.class);
+                if (Boolean.TRUE.equals(puedeDarCredito)) {
+                    authorities.add(new SimpleGrantedAuthority("PUEDE_DAR_CREDITO"));
+                }
+
                 // Tambien por ROL: quien puede corregir una atencion ya registrada.
                 Boolean puedeCorregir = claims.get("puedeCorregirAtencion", Boolean.class);
                 if (Boolean.TRUE.equals(puedeCorregir)) {

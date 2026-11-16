@@ -104,4 +104,8 @@ public interface TratamientoRepository extends JpaRepository<Tratamiento, Long> 
         WHERE ter.id = :terapeutaId
         """)
     Page<TratamientoDTO> findByTerapeutaIdProjected(@Param("terapeutaId") Long terapeutaId, Pageable pageable);
+
+    /** Los paquetes cargados a una cuenta de credito. Aqui vive la deuda de un paquete:
+     *  montoTotal - totalCobrado. */
+    List<Tratamiento> findByCuentaCreditoId(Long cuentaCreditoId);
 }

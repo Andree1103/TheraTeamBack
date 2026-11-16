@@ -77,6 +77,30 @@ public class Cita {
     private CatEstadoPagoCita estadoPago;
 
     /**
+     * La cuenta que responde por esta cita cuando se atendió sin pagar. Null = cita normal.
+     *
+     * Es la salida legítima al caso que la clínica tiene todas las semanas: el familiar de un
+     * terapeuta que se atiende hoy y se paga a fin de mes. Hasta ahora no había ninguna, y el
+     * mostrador usaba dos atajos — cobrar un efectivo que no entró (que descuadra la caja) o
+     * dejar la cita en Programada para siempre. En los dos casos nadie sabía cuánto había por
+     * cobrar ni a quién cobrárselo.
+     *
+     * LA BASE GARANTIZA QUE LA CUENTA CUBRA A ESTE PACIENTE, con una FK compuesta sobre
+     * (paciente_id, cuenta_credito_id) contra cuenta_credito_pacientes. Es la regla que más fácil
+     * se rompe desde código: cualquier camino nuevo que escriba este campo sin revisar el amarre
+     * cargaría la deuda al titular equivocado, y eso recién se nota cuando a alguien le cobran de
+     * más a fin de mes.
+     *
+     * No reemplaza a estadoPago ni a montoPagado: la deuda se sigue calculando igual que en
+     * cualquier cita (precio - montoPagado), y A_CREDITO es el estado de pago mientras esté
+     * pendiente. Cuando el crédito se cobra, la cita pasa a PARCIAL o PAGADA como cualquier otra
+     * y este campo se queda — es historia de quién respondió.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "cuenta_credito_id")
+    private CuentaCredito cuentaCredito;
+
+    /**
      * Por qué la cita no se hizo como estaba: el motivo de la anulación, de la reprogramación o
      * de la inasistencia. Tiene valor cuando el estado es ANULADA, REPROGRAMADA o NO_ASISTIO.
      *

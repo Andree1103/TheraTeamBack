@@ -46,6 +46,7 @@ public class CatRolService {
             existing.setPuedeVerSaldoInicial(Boolean.TRUE.equals(data.getPuedeVerSaldoInicial()));
             existing.setPuedeEditarHoraCorte(Boolean.TRUE.equals(data.getPuedeEditarHoraCorte()));
             existing.setPuedeMarcarCita(Boolean.TRUE.equals(data.getPuedeMarcarCita()));
+            existing.setPuedeDarCredito(Boolean.TRUE.equals(data.getPuedeDarCredito()));
             if (data.getPermisos() != null) {
                 // Actualiza en el sitio las filas que siguen (en vez de borrar-y-recrear): con
                 // orphanRemoval, un clear()+add() del mismo (rol,modulo) genera un INSERT antes del

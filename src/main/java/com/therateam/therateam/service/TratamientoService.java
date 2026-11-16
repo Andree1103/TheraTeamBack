@@ -28,6 +28,7 @@ public class TratamientoService {
     private final PagoRepository pagoRepository;
     private final CitaRepository citaRepository;
     private final CatEstadoSesionRepository catEstadoSesionRepository;
+    private final CuentaCreditoService cuentaCreditoService;
 
     @Transactional(readOnly = true)
     /**
@@ -91,6 +92,16 @@ public class TratamientoService {
         // Un paquete no puede NACER completado: no se ha dado ni una sesion.
         exigirQueCompletadoTengaSentido(t, 0);
         exigirAlMenosUnaSesion(t);
+
+        // A credito: el cuarto camino. Un paquete vendido sin cobrar queda a cargo del titular de
+        // la cuenta, y su deuda es la del paquete (montoTotal - totalCobrado), no la de cada
+        // sesion — por eso el credito va aqui y la base impide ponerlo en las citas del paquete.
+        //
+        // Pasa por las mismas reglas que los otros tres: permiso, no-autocredito y amarre.
+        if (t.getCuentaCredito() != null && t.getCuentaCredito().getId() != null) {
+            cuentaCreditoService.aplicarAPaquete(t, t.getCuentaCredito().getId());
+        }
+
         return repository.save(t);
     }
 

@@ -64,6 +64,21 @@ public final class SecurityUtils {
                 .anyMatch(a -> "PUEDE_MARCAR_CITA".equals(a.getAuthority()));
     }
 
+    /**
+     * true solo si el rol del usuario puede dar credito: atender una cita, un lote masivo o
+     * vender un paquete sin cobrarlo, cargandolo a la cuenta de alguien.
+     *
+     * OJO: tener el permiso NO alcanza para cargarse credito a si mismo. Esa comprobacion es
+     * aparte (compara el titular de la cuenta con el usuario logueado) porque quien se beneficia
+     * de la deuda no puede ser quien la autoriza.
+     */
+    public static boolean puedeDarCredito() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> "PUEDE_DAR_CREDITO".equals(a.getAuthority()));
+    }
+
     /** true solo si el rol del usuario puede ver el saldo inicial de la caja. */
     public static boolean puedeVerSaldoInicial() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

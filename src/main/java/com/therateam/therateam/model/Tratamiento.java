@@ -68,6 +68,25 @@ public class Tratamiento {
 
     @Column(name = "saldo_a_favor")
     private BigDecimal saldoAFavor;
+
+    /**
+     * La cuenta que responde por este paquete cuando se vendió sin cobrarlo. Null = paquete normal.
+     *
+     * EL CRÉDITO DE UN PAQUETE VA AQUÍ, no en sus citas. Es donde vive su dinero: la deuda del
+     * paquete es montoTotal - totalCobrado, y es contra el tratamiento que se cobra. Una cita de
+     * paquete lleva precio y montoPagado propios, así que si el crédito se pudiera poner en las
+     * dos puntas la deuda de la cuenta sumaría dos veces el mismo paquete — por eso la base lo
+     * impide (ck_citas_credito_solo_sueltas).
+     *
+     * Lo que debe es el paquete, no cada una de sus sesiones.
+     *
+     * Igual que en {@link Cita}, la base garantiza que la cuenta cubra a este paciente con una FK
+     * compuesta sobre (paciente_id, cuenta_credito_id).
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "cuenta_credito_id")
+    private CuentaCredito cuentaCredito;
+
     private LocalDate fechaInicio;
     private String notas;
     private LocalDateTime createdAt;
