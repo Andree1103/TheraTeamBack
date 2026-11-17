@@ -14,9 +14,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,9 +42,15 @@ import java.util.stream.Collectors;
  * 3. El límite avisa, no bloquea. Pasarse no impide cargar la cita; devuelve un aviso. Bloquear
  *    en el mostrador, con el paciente delante, devuelve el atajo del efectivo fantasma.
  *
- * Lo que sí garantiza la base: que la cuenta cubra a ese paciente (FK compuesta), que un paciente
- * esté activo en una sola cuenta, y que una cita de paquete no se cargue aquí — su deuda la lleva
- * el tratamiento, y contarla por las dos puntas sumaría el mismo paquete dos veces.
+ * Lo que sí garantiza la base: que la cuenta cubra a ese paciente (FK compuesta) y que una cita
+ * de paquete no se cargue aquí — su deuda la lleva el tratamiento, y contarla por las dos puntas
+ * sumaría el mismo paquete dos veces.
+ *
+ * UN PACIENTE, VARIAS CUENTAS. Hasta el 17-11-2026 un paciente estaba amarrado a una sola, y
+ * cargarle una atención a otra cuenta daba error. Se cayó con el caso real: un terapeuta atiende
+ * y el crédito es para otro terapeuta, o a la misma madre la paga su hija una semana y su hijo la
+ * siguiente. Ahora el amarre dice quiénes PUEDEN pagar por ese paciente, y cada cita dice quién
+ * pagó esa. Ver 2026-11-17-credito-varias-cuentas.sql.
  */
 @Service
 @RequiredArgsConstructor
@@ -163,9 +171,9 @@ public class CuentaCreditoService {
      * mandar a la recepcionista a otra pantalla primero, con el paciente esperando en el mostrador,
      * es exactamente la friccion que hace que se vuelva al atajo del efectivo fantasma.
      *
-     * Si el paciente ya está activo en OTRA cuenta, no se mueve solo: eso es cambiarle de
-     * responsable, y es una decisión, no un trámite. La base lo impediría igual (un paciente
-     * activo en una sola cuenta), pero el mensaje explica a quién está amarrado hoy.
+     * Que el paciente ya esté en OTRA cuenta no estorba: puede estar en varias, y cuál paga ESTA
+     * atención lo dice la cita. Antes era un error ("desamárralo de esa cuenta antes de cargarlo
+     * a esta"), y obligaba a romper el amarre viejo para poder fiarle una cita a otro.
      */
     private void asegurarAmarre(CuentaCredito cuenta, Paciente paciente) {
         Optional<CuentaCreditoPaciente> enEstaCuenta =
@@ -178,14 +186,6 @@ public class CuentaCreditoService {
                 amarreRepository.save(amarre);
             }
             return;
-        }
-
-        Optional<CuentaCreditoPaciente> enOtraCuenta = amarreRepository.amarreVigenteDe(paciente.getId());
-        if (enOtraCuenta.isPresent()) {
-            CuentaCredito otra = enOtraCuenta.get().getCuenta();
-            throw new IllegalArgumentException(
-                    nombreDe(paciente) + " ya está amarrado a la cuenta de " + nombreDe(otra.getTitular())
-                  + ". Desamárralo de esa cuenta antes de cargarlo a esta.");
         }
 
         CuentaCreditoPaciente amarre = new CuentaCreditoPaciente();
@@ -294,12 +294,83 @@ public class CuentaCreditoService {
         return aDTO(c, porCitas.get(id), porPaquetes.get(id));
     }
 
-    /** La cuenta a la que está amarrado un paciente, si a alguna. La pantalla de citas la consulta
-     *  para poder ofrecer "a crédito" sin que nadie tenga que acordarse de a quién se le carga. */
+    /**
+     * La cuenta que se SUGIERE al fiar una atención de este paciente, si hay alguna.
+     *
+     * Con varias cuentas posibles hay que proponer una: preguntar en seco "¿quién paga?" con el
+     * paciente delante es como se elige mal. La apuesta es la última que le pagó algo, porque lo
+     * normal es que se repita; si nunca le pagaron nada, la cuenta que lo cubre desde hace menos.
+     *
+     * Es una sugerencia y nada más: el formulario las lista todas y quien crea la cita decide.
+     */
     @Transactional(readOnly = true)
     public Optional<CuentaCreditoDTO> cuentaDePaciente(Long pacienteId) {
-        return amarreRepository.amarreVigenteDe(pacienteId)
-                .map(a -> detalle(a.getCuenta().getId()));
+        List<Long> puedenPagar = idsDeCuentasQueLoCubren(pacienteId);
+        if (puedenPagar.isEmpty()) return Optional.empty();
+
+        Long ultima = ultimaCuentaQuePago(pacienteId, new HashSet<>(puedenPagar));
+        return Optional.of(detalle(ultima != null ? ultima : puedenPagar.get(0)));
+    }
+
+    /**
+     * Todas las cuentas que hoy pueden pagar por este paciente, la sugerida primero.
+     *
+     * La pantalla de citas las pone arriba del desplegable, separadas del resto: entre "ya le han
+     * pagado antes" y "cualquier otra cuenta" hay una diferencia que conviene ver sin leer.
+     */
+    @Transactional(readOnly = true)
+    public List<CuentaCreditoDTO> cuentasDePaciente(Long pacienteId) {
+        List<Long> ids = idsDeCuentasQueLoCubren(pacienteId);
+        if (ids.isEmpty()) return List.of();
+
+        Long ultima = ultimaCuentaQuePago(pacienteId, new HashSet<>(ids));
+        if (ultima != null && ids.remove(ultima)) ids.add(0, ultima);
+
+        return ids.stream().map(this::detalle).collect(Collectors.toList());
+    }
+
+    /** Las cuentas vigentes de un paciente, de la más nueva a la más vieja y sin repetir. */
+    private List<Long> idsDeCuentasQueLoCubren(Long pacienteId) {
+        return amarreRepository.amarresVigentesDe(pacienteId).stream()
+                .map(a -> a.getCuenta().getId())
+                .distinct()
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * La última cuenta que le pagó algo a este paciente, mirando citas y paquetes.
+     *
+     * Se compara la fecha de la ATENCIÓN, no la de creación: lo que importa es qué fue lo último
+     * que se le cargó a alguien, que es lo que recepción tiene fresco. Un paquete trae LocalDate
+     * y una cita LocalDateTime, así que el paquete entra a las 00:00 de su día.
+     *
+     * Solo cuentan las cuentas que hoy siguen cubriéndolo: a una de la que se lo desamarró no se
+     * vuelve solo.
+     */
+    private Long ultimaCuentaQuePago(Long pacienteId, Set<Long> permitidas) {
+        Long mejorId = null;
+        LocalDateTime mejorFecha = null;
+
+        for (Object[] fila : repository.ultimasCuentasPorCitas(pacienteId)) {
+            Long id = (Long) fila[0];
+            if (!permitidas.contains(id) || fila[1] == null) continue;
+            mejorId = id;
+            mejorFecha = (LocalDateTime) fila[1];
+            break;  // ya vienen de la más reciente a la más vieja
+        }
+
+        for (Object[] fila : repository.ultimasCuentasPorPaquetes(pacienteId)) {
+            Long id = (Long) fila[0];
+            if (!permitidas.contains(id) || fila[1] == null) continue;
+            LocalDateTime fecha = ((LocalDate) fila[1]).atStartOfDay();
+            if (mejorFecha == null || fecha.isAfter(mejorFecha)) {
+                mejorId = id;
+                mejorFecha = fecha;
+            }
+            break;
+        }
+
+        return mejorId;
     }
 
     // =============================================================================================

@@ -18,12 +18,14 @@ public interface CuentaCreditoPacienteRepository extends JpaRepository<CuentaCre
     List<CuentaCreditoPaciente> findByCuentaIdAndActivoTrueOrderByIdAsc(Long cuentaId);
 
     /**
-     * A qué cuenta está amarrado este paciente, si a alguna.
+     * Las cuentas que hoy pueden pagar por este paciente.
      *
-     * Devuelve a lo sumo una: el índice parcial uq_ccp_un_paciente_una_cuenta impide que un
-     * paciente esté activo en dos cuentas a la vez. Esto es lo que se consulta al marcar la cita
-     * para saber a qué cuenta se puede cargar, y lo que contesta "a quién está amarrado este
-     * paciente" en la ficha.
+     * Son varias desde el 17-11-2026: a la misma persona la puede pagar su hija una semana y su
+     * hijo la siguiente, y antes la segunda cita se caía con "ya está amarrado a otra cuenta".
+     * Cuál paga cada atención lo decide la cita, no esta tabla; esto solo dice quiénes PUEDEN.
+     *
+     * De la más nueva a la más vieja, que es el orden en que conviene ofrecerlas: lo último que
+     * se hizo es lo más probable que se repita.
      */
     @Query("""
         SELECT a FROM CuentaCreditoPaciente a
@@ -31,8 +33,9 @@ public interface CuentaCreditoPacienteRepository extends JpaRepository<CuentaCre
           JOIN FETCH cu.titular
          WHERE a.paciente.id = :pacienteId
            AND a.activo = true
+         ORDER BY a.id DESC
         """)
-    Optional<CuentaCreditoPaciente> amarreVigenteDe(@Param("pacienteId") Long pacienteId);
+    List<CuentaCreditoPaciente> amarresVigentesDe(@Param("pacienteId") Long pacienteId);
 
     /** El par exacto, activo o no. Lo necesita el service antes de cargar una cita: la FK
      *  compuesta de citas exige que el par exista, aunque el amarre ya esté desactivado. */

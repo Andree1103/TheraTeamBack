@@ -16,6 +16,38 @@ public interface CuentaCreditoRepository extends JpaRepository<CuentaCredito, Lo
     /** Una cuenta por titular (UNIQUE en la base), así que devuelve a lo sumo una. */
     Optional<CuentaCredito> findByTitularId(Long titularId);
 
+    /**
+     * La última cuenta que le pagó una CITA a este paciente, con la fecha de esa atención.
+     *
+     * Es lo que el formulario sugiere al fiar. Un paciente puede estar en varias cuentas, y
+     * preguntar "¿quién paga?" sin proponer nada hace que alguien elija mal con prisa; lo último
+     * que pasó es la mejor apuesta, y se cambia en el mismo desplegable.
+     *
+     * Devuelve filas {cuentaId, fecha} de la más reciente a la más vieja: el service se queda con
+     * la primera y la compara con la de paquetes.
+     */
+    @Query("""
+        SELECT c.cuentaCredito.id, MAX(c.fechaInicio)
+          FROM Cita c
+         WHERE c.paciente.id = :pacienteId
+           AND c.cuentaCredito IS NOT NULL
+           AND c.eliminado = false
+         GROUP BY c.cuentaCredito.id
+         ORDER BY MAX(c.fechaInicio) DESC
+        """)
+    List<Object[]> ultimasCuentasPorCitas(@Param("pacienteId") Long pacienteId);
+
+    /** Lo mismo para los PAQUETES: su deuda vive en el tratamiento, no en sus citas. */
+    @Query("""
+        SELECT t.cuentaCredito.id, MAX(t.fechaInicio)
+          FROM Tratamiento t
+         WHERE t.paciente.id = :pacienteId
+           AND t.cuentaCredito IS NOT NULL
+         GROUP BY t.cuentaCredito.id
+         ORDER BY MAX(t.fechaInicio) DESC
+        """)
+    List<Object[]> ultimasCuentasPorPaquetes(@Param("pacienteId") Long pacienteId);
+
     boolean existsByTitularId(Long titularId);
 
     List<CuentaCredito> findByTipoOrderByIdAsc(CuentaCredito.Tipo tipo);

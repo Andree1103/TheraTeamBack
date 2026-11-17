@@ -98,6 +98,17 @@ public class CuentaCreditoController {
 
     /** Para que la pantalla de citas pueda ofrecer "a credito" sin que nadie tenga que acordarse
      *  de a quien se le carga. 204 si el paciente no esta amarrado a ninguna cuenta. */
+    /**
+     * Todas las cuentas que pueden pagar por este paciente, la sugerida primero.
+     *
+     * Va aparte de /paciente/{id} porque contestan cosas distintas: aquella dice "esta es la
+     * apuesta" y esta "estas son las opciones". El formulario de la cita usa las dos.
+     */
+    @GetMapping("/paciente/{pacienteId}/cuentas")
+    public List<CuentaCreditoDTO> cuentasDePaciente(@PathVariable Long pacienteId) {
+        return service.cuentasDePaciente(pacienteId);
+    }
+
     @GetMapping("/paciente/{pacienteId}")
     public ResponseEntity<CuentaCreditoDTO> cuentaDePaciente(@PathVariable Long pacienteId) {
         return service.cuentaDePaciente(pacienteId)
