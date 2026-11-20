@@ -130,22 +130,28 @@ public class CitaService {
      * listado puede traer 10.000 filas cuando se exporta.
      */
     private Page<CitaDTO> conQuienLaToco(Page<CitaDTO> pagina) {
-        List<Long> ids = pagina.getContent().stream().map(CitaDTO::getId)
+        conQuienLaToco(pagina.getContent());
+        return pagina;
+    }
+
+    /** Misma mano, sobre una lista suelta: la ficha del paciente no pagina sus citas. */
+    private List<CitaDTO> conQuienLaToco(List<CitaDTO> citas) {
+        List<Long> ids = citas.stream().map(CitaDTO::getId)
                 .filter(java.util.Objects::nonNull).toList();
-        if (ids.isEmpty()) return pagina;
+        if (ids.isEmpty()) return citas;
 
         java.util.Map<Long, Object[]> porCita = new java.util.HashMap<>();
         for (Object[] f : citaRepository.quienLaToco(ids)) {
             porCita.put(((Number) f[0]).longValue(), f);
         }
-        pagina.getContent().forEach(dto -> {
+        citas.forEach(dto -> {
             Object[] q = porCita.get(dto.getId());
             if (q != null) {
                 dto.setUsuarioModificacionNombre(q[1] != null ? q[1].toString() : null);
                 dto.setUsuarioAtencionNombre(q[2] != null ? q[2].toString() : null);
             }
         });
-        return pagina;
+        return citas;
     }
 
     private static String paraLike(String s) {
@@ -182,7 +188,9 @@ public class CitaService {
     }
 
     public List<CitaDTO> findByPaciente(Long pacienteId) {
-        return citaRepository.findByPacienteIdProjected(pacienteId);
+        // Con quien la edito por ultima vez y quien registro su atencion: el Excel del historial
+        // del paciente sale de aqui, y esas dos columnas se piden en todas sus hojas.
+        return conQuienLaToco(citaRepository.findByPacienteIdProjected(pacienteId));
     }
 
     /** Cuántas citas de un lote de "citas masivas" faltan/ya se atendieron/se cancelaron/faltan por crear. */
@@ -577,7 +585,14 @@ public class CitaService {
                 citaHistorialRepository.save(h);
             }
 
-            return citaRepository.save(e);
+            Cita guardada = citaRepository.save(e);
+            // Editarle la hora a una cita de paquete puede adelantarla o atrasarla respecto de
+            // sus hermanas, y entonces el numero de sesion deja de seguir al calendario. Ver
+            // SesionRepository#renumerarPorFechaDeCita.
+            if (fechaCambio && guardada.getSesion() != null && guardada.getSesion().getTratamiento() != null) {
+                sesionRepository.renumerarPorFechaDeCita(guardada.getSesion().getTratamiento().getId());
+            }
+            return guardada;
         });
     }
 
@@ -1088,6 +1103,12 @@ public class CitaService {
             Sesion sesion = original.getSesion();
             sesion.setCitaActiva(guardada);
             sesionRepository.save(sesion);
+            // Mover una cita puede cambiar el orden en que pasan las sesiones del paquete: si la
+            // quinta se adelanta al martes, pasa a ser la primera y el resto corre. Ver
+            // SesionRepository#renumerarPorFechaDeCita.
+            if (sesion.getTratamiento() != null) {
+                sesionRepository.renumerarPorFechaDeCita(sesion.getTratamiento().getId());
+            }
         }
 
         CatEstadoCita reprogramada = catEstadoCitaRepository.findByKey("REPROGRAMADA")
@@ -1286,6 +1307,9 @@ public class CitaService {
         if (sesion != null) {
             sesion.setCitaActiva(cita);
             sesionRepository.save(sesion);
+            // La sesion nueva no tiene por que ser la ultima en el calendario: se puede estar
+            // rellenando un hueco anterior. Ver SesionRepository#renumerarPorFechaDeCita.
+            sesionRepository.renumerarPorFechaDeCita(tratamiento.getId());
         }
 
         // Crear pago si se solicitó
@@ -1578,6 +1602,9 @@ public class CitaService {
         if (sesion != null) {
             sesion.setCitaActiva(cita);
             sesionRepository.save(sesion);
+            // Igual que en createRapida: la sesion recien ocupada puede caer antes que otras ya
+            // agendadas. Ver SesionRepository#renumerarPorFechaDeCita.
+            sesionRepository.renumerarPorFechaDeCita(tratamiento.getId());
         }
 
         return toDTO(cita);
@@ -1681,8 +1708,29 @@ public class CitaService {
                 : citaRepository.findByPacienteIdAndFechaInicioLessThanAndFechaFinGreaterThanAndEstado_KeyNotInAndEliminadoFalse(
                         paciente.getId(), fin, inicio, ESTADOS_QUE_NO_OCUPAN);
         if (!solapadas.isEmpty()) {
-            throw new IllegalArgumentException("El paciente ya tiene otra cita en ese horario — no puede estar en dos sesiones a la vez.");
+            throw new IllegalArgumentException(
+                    "El paciente ya tiene otra cita en ese horario — no puede estar en dos sesiones a la vez. "
+                            + "Choca con " + describirParaElChoque(solapadas.get(0)) + ".");
         }
+    }
+
+    /**
+     * Como se nombra la cita que esta ocupando el hueco.
+     *
+     * Decir solo «ya tiene otra cita» obliga a ir a buscarla, y al crear un paquete el aviso se
+     * daba en bloque —«se crearon 2 de 5, las demas tenian conflicto»— sin decir cual de las
+     * cinco ni contra que. Con el numero, la terapia y la hora se resuelve en el momento: casi
+     * siempre es una cita suelta vieja, de otro tipo de terapia, que nadie recordaba.
+     */
+    private static String describirParaElChoque(Cita c) {
+        StringBuilder sb = new StringBuilder("la cita #").append(c.getId());
+        String tipo = c.getTipoTerapia() != null ? c.getTipoTerapia().getNombre() : null;
+        if (tipo != null && !tipo.isBlank()) sb.append(" (").append(tipo).append(")");
+        if (c.getFechaInicio() != null) {
+            sb.append(" del ").append(c.getFechaInicio()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+        }
+        return sb.toString();
     }
 
     public CitaDTO toDTO(Cita c) {

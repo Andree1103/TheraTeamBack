@@ -26,6 +26,7 @@ public class AtencionClinicaService {
     /** Para devolver el dinero de una inasistencia por el mismo camino que lo hace anular. */
     private final CitaService citaService;
     private final CitaHistorialRepository citaHistorialRepository;
+    private final UsuarioRepository usuarioRepository;
 
     public List<AtencionClinica> findAll() { return repository.findAll(); }
 
@@ -37,7 +38,32 @@ public class AtencionClinicaService {
 
     /** Todas las atenciones del paciente — lo que el perfil necesita para su pestaña. */
     public List<AtencionClinica> findByPaciente(Long pacienteId) {
-        return repository.findByPacienteId(pacienteId);
+        return conNombresDeUsuario(repository.findByPacienteId(pacienteId));
+    }
+
+    /**
+     * Pone nombre y apellido a los dos ids de auditoria de cada atencion.
+     *
+     * Una sola consulta para toda la lista, no una por fila: la ficha de un paciente con un año
+     * de tratamiento trae decenas de atenciones. Ver AtencionClinica#usuarioCreacionNombre.
+     */
+    private List<AtencionClinica> conNombresDeUsuario(List<AtencionClinica> atenciones) {
+        java.util.Set<Long> ids = new java.util.HashSet<>();
+        for (AtencionClinica a : atenciones) {
+            if (a.getUsuarioCreacionId() != null) ids.add(a.getUsuarioCreacionId());
+            if (a.getUsuarioModificacionId() != null) ids.add(a.getUsuarioModificacionId());
+        }
+        if (ids.isEmpty()) return atenciones;
+
+        java.util.Map<Long, String> porId = new java.util.HashMap<>();
+        for (Usuario u : usuarioRepository.findAllById(ids)) {
+            porId.put(u.getId(), (u.getNombre() + " " + u.getApellido()).trim());
+        }
+        for (AtencionClinica a : atenciones) {
+            a.setUsuarioCreacionNombre(porId.get(a.getUsuarioCreacionId()));
+            a.setUsuarioModificacionNombre(porId.get(a.getUsuarioModificacionId()));
+        }
+        return atenciones;
     }
 
     /**

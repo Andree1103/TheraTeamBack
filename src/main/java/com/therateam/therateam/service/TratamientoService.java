@@ -55,17 +55,34 @@ public class TratamientoService {
         List<Long> ids = pagina.getContent().stream().map(TratamientoDTO::getId).filter(java.util.Objects::nonNull).toList();
         if (ids.isEmpty()) return pagina;
         java.util.Map<Long, long[]> porPaquete = new java.util.HashMap<>();
-        for (Object[] f : citaRepository.contarCitasPorTratamiento(ids)) {
+        for (Object[] f : citaRepository.contarCitasPorTratamiento(ids, EstadosDeCita.YA_NO_ES_UNA_SESION_POR_DAR)) {
             porPaquete.put(((Number) f[0]).longValue(), new long[]{
                     f[1] == null ? 0 : ((Number) f[1]).longValue(),
                     f[2] == null ? 0 : ((Number) f[2]).longValue(),
-                    f[3] == null ? 0 : ((Number) f[3]).longValue()});
+                    f[3] == null ? 0 : ((Number) f[3]).longValue(),
+                    f[4] == null ? 0 : ((Number) f[4]).longValue()});
         }
+        // Cuantas de sus sesiones siguen sin cita en el calendario. Ver
+        // SesionRepository#contarSesionesPorTratamiento.
+        java.util.Map<Long, long[]> sesionesPorPaquete = new java.util.HashMap<>();
+        for (Object[] f : sesionRepository.contarSesionesPorTratamiento(ids)) {
+            sesionesPorPaquete.put(((Number) f[0]).longValue(), new long[]{
+                    f[1] == null ? 0 : ((Number) f[1]).longValue(),
+                    f[2] == null ? 0 : ((Number) f[2]).longValue()});
+        }
+
         pagina.getContent().forEach(dto -> {
-            long[] c = porPaquete.getOrDefault(dto.getId(), new long[]{0, 0, 0});
+            long[] c = porPaquete.getOrDefault(dto.getId(), new long[]{0, 0, 0, 0});
             dto.setCitasTotal((int) c[0]);
             dto.setCitasAtendidas((int) c[1]);
             dto.setCitasNoAsistidas((int) c[2]);
+            dto.setCitasPagadasSinUsar((int) c[3]);
+
+            long[] s = sesionesPorPaquete.getOrDefault(dto.getId(), new long[]{0, 0});
+            int total = dto.getTotalSesiones() != null ? dto.getTotalSesiones() : 0;
+            // Las sesiones que no existen como fila cuentan igual: un paquete de 5 con 4 filas
+            // tiene una sin agendar aunque ninguna de las cuatro este libre.
+            dto.setSesionesSinAgendar(Math.max(0, total - (int) s[1]));
         });
         return pagina;
     }
@@ -202,6 +219,10 @@ public class TratamientoService {
             sesionRepository.save(guardada);
             metidas++;
         }
+        // Las absorbidas entran numeradas detras de las que ya habia, pero sus fechas son las que
+        // el paciente ya tenia agendadas: casi siempre las primeras del paquete. Ver
+        // SesionRepository#renumerarPorFechaDeCita.
+        if (metidas > 0) sesionRepository.renumerarPorFechaDeCita(tratamientoId);
         return metidas;
     }
 

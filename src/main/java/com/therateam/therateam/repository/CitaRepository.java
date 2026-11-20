@@ -239,23 +239,34 @@ public interface CitaRepository extends JpaRepository<Cita, Long>, JpaSpecificat
     java.util.Optional<CitaDTO> findByIdProjected(@Param("id") Long id);
 
     /**
-     * Cuantas citas tiene cada paquete, cuantas atendidas y cuantas no asistidas, de una sola vez.
+     * Cuantas citas tiene cada paquete, cuantas atendidas, cuantas no asistidas y cuantas estan
+     * pagadas sin haberse usado todavia, de una sola vez.
+     *
+     * La ultima es la que se preguntaba a mano al exportar: un paquete se cobra por adelantado,
+     * asi que sus citas nacen pagadas y se van gastando. Las pagadas sin usar son las que ya
+     * tienen dinero encima y siguen por ocurrir — ni atendidas, ni anuladas, ni inasistencias,
+     * ni reprogramadas (esas ya resolvieron su dinero por su lado). Es lo que el paciente tiene
+     * «a favor» dentro del paquete y lo que habria que devolverle si lo dejara.
      *
      * Agrupado a proposito: contarlo paquete por paquete al listar seria una consulta por fila.
-     * Devuelve [tratamientoId, total, atendidas, noAsistidas].
+     * Devuelve [tratamientoId, total, atendidas, noAsistidas, pagadasSinUsar].
      */
     @Query("""
         SELECT s.tratamiento.id,
                COUNT(c),
                SUM(CASE WHEN e.key = 'ASISTIDA'   THEN 1 ELSE 0 END),
-               SUM(CASE WHEN e.key = 'NO_ASISTIO' THEN 1 ELSE 0 END)
+               SUM(CASE WHEN e.key = 'NO_ASISTIO' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN COALESCE(c.montoPagado, 0) > 0
+                         AND (e.key IS NULL OR e.key NOT IN :yaNoSonPorDar)
+                        THEN 1 ELSE 0 END)
         FROM Cita c
         JOIN c.sesion s
         LEFT JOIN c.estado e
         WHERE s.tratamiento.id IN :ids AND c.eliminado = false
         GROUP BY s.tratamiento.id
         """)
-    List<Object[]> contarCitasPorTratamiento(@Param("ids") java.util.Collection<Long> ids);
+    List<Object[]> contarCitasPorTratamiento(@Param("ids") java.util.Collection<Long> ids,
+                                              @Param("yaNoSonPorDar") java.util.Collection<String> yaNoSonPorDar);
 
     /**
      * Lo cobrado de sesiones que siguen en pie y sin darse, de un paciente: [cuantas, cuanto].

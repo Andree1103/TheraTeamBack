@@ -25,4 +25,6 @@ public class SaldoMovimientoDTO {
     private Long citaId;
     private Long pagoId;
     private LocalDateTime fecha;
+    /** Quien registro el movimiento. Va en el Excel del historial, igual que en las demas hojas. */
+    private String usuarioCreacionNombre;
 }

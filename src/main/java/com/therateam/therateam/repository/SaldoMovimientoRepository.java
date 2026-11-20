@@ -21,7 +21,8 @@ public interface SaldoMovimientoRepository extends JpaRepository<SaldoMovimiento
     @Query("""
         SELECT new com.therateam.therateam.dto.SaldoMovimientoDTO(
             m.id, p.id, m.monto, m.saldoResultante, m.motivo,
-            CONCAT(u.nombre, ' ', u.apellido), c.id, pg.id, m.fecha)
+            CONCAT(u.nombre, ' ', u.apellido), c.id, pg.id, m.fecha,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = m.usuarioCreacionId))
         FROM SaldoMovimiento m
         JOIN m.paciente p
         LEFT JOIN m.terapeuta t
@@ -38,7 +39,8 @@ public interface SaldoMovimientoRepository extends JpaRepository<SaldoMovimiento
     @Query("""
         SELECT new com.therateam.therateam.dto.SaldoMovimientoDTO(
             m.id, p.id, m.monto, m.saldoResultante, m.motivo,
-            CONCAT(u.nombre, ' ', u.apellido), c.id, pg.id, m.fecha)
+            CONCAT(u.nombre, ' ', u.apellido), c.id, pg.id, m.fecha,
+            (SELECT CONCAT(uc.nombre, ' ', uc.apellido) FROM Usuario uc WHERE uc.id = m.usuarioCreacionId))
         FROM SaldoMovimiento m
         JOIN m.paciente p
         LEFT JOIN m.terapeuta t

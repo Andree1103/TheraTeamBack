@@ -95,6 +95,19 @@ public class AtencionClinica {
     @Column(name = "idusuario_modificacion")
     private Long usuarioModificacionId;
 
+    /**
+     * Quien la registro y quien la toco por ultima vez, ya con nombre y apellido.
+     *
+     * No son columnas: se rellenan al leer (AtencionClinicaService#conNombresDeUsuario). Las
+     * guarda la entidad y no un DTO porque esta API devuelve la entidad tal cual, y el Excel del
+     * historial del paciente pide estas dos columnas en todas sus hojas — con el id suelto no se
+     * puede poner un nombre en una celda.
+     */
+    @Transient
+    private String usuarioCreacionNombre;
+    @Transient
+    private String usuarioModificacionNombre;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now();

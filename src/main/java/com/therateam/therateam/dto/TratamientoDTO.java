@@ -50,6 +50,24 @@ public class TratamientoDTO {
     private Integer citasTotal;
     private Integer citasAtendidas;
     private Integer citasNoAsistidas;
+
+    /**
+     * Citas del paquete que ya tienen dinero encima y todavia no se han usado.
+     *
+     * Un paquete se cobra por adelantado, asi que sus citas nacen pagadas y se van gastando.
+     * Esta columna es la que se pedia al exportar: cuantas sesiones pagadas le quedan al
+     * paciente por recibir — ni atendidas, ni anuladas, ni inasistencias, ni reprogramadas.
+     */
+    private Integer citasPagadasSinUsar;
+
+    /**
+     * Sesiones del paquete que todavia no tienen cita en el calendario.
+     *
+     * Es totalSesiones menos las sesiones con cita. Se publica porque hasta ahora un paquete que
+     * nacia corto —una fecha que chocaba con otra cita del paciente y se perdia con un aviso de
+     * segundos— seguia diciendo que era de N sesiones sin una sola señal de que le faltaban.
+     */
+    private Integer sesionesSinAgendar;
     private BigDecimal montoTotal;
     private BigDecimal precioPorSesion;
     private BigDecimal totalCobrado;
